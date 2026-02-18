@@ -1,0 +1,50 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$roomCode": {
+        ".read": "auth != null && (!data.exists() || data.child('players').child(auth.uid).exists() || (data.child('state').child('status').val() == 'WAITING' && !data.child('players').child(auth.uid).exists()))",
+        ".write": "auth != null && (data.child('players').child(auth.uid).exists() || (!data.exists() && newData.child('meta').child('hostUid').val() == auth.uid && newData.child('players').child(auth.uid).exists()) || (data.exists() && data.child('state').child('status').val() == 'WAITING' && !data.child('players').child(auth.uid).exists() && newData.child('players').child(auth.uid).exists()))",
+        "players": {
+          "$uid": {
+            ".validate": "newData.hasChildren(['uid','nickname','symbol','joinedAt']) && newData.child('uid').val() == $uid && (newData.child('symbol').val() == 'X' || newData.child('symbol').val() == 'O')"
+          }
+        },
+        "state": {
+          ".validate": "newData.hasChildren(['cells','miniWinners','nextMiniGrid','moveCount','currentTurnUid','status','version'])"
+        },
+        "presence": {
+          "$uid": {
+            ".validate": "newData.hasChildren(['uid','connected','lastSeen','disconnectedAt']) && newData.child('uid').val() == $uid"
+          }
+        }
+      }
+    },
+    "webRooms": {
+      "$roomCode": {
+        ".read": "$roomCode.matches(/^[0-9]{4}$/)",
+        ".write": "$roomCode.matches(/^[0-9]{4}$/)",
+        "players": {
+          "$uid": {
+            ".validate": "newData.hasChildren(['uid','nickname','symbol','joinedAt']) && newData.child('uid').val() == $uid && newData.child('nickname').isString() && newData.child('nickname').val().length <= 22 && (newData.child('symbol').val() == 'X' || newData.child('symbol').val() == 'O')"
+          }
+        },
+        "state": {
+          ".validate": "newData.hasChildren(['cells','miniWinners','nextMiniGrid','moveCount','currentTurnUid','status','winnerUid','winnerSymbol','winReason','startedAt','updatedAt','version'])"
+        },
+        "presence": {
+          "$uid": {
+            ".validate": "newData.hasChildren(['uid','connected','lastSeen','disconnectedAt']) && newData.child('uid').val() == $uid"
+          }
+        },
+        "rematch": {
+          ".validate": "newData.hasChildren(['hostReady','guestReady','nonce'])"
+        },
+        "meta": {
+          ".validate": "newData.hasChildren(['hostUid','createdAt'])"
+        }
+      }
+    }
+  }
+}
