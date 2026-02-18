@@ -58,9 +58,7 @@ class FirebaseAuthGateway(
             return anonymous
         }
 
-        // Some Firebase projects are created without Auth config initialized.
-        // Fallback keeps local multiplayer usable until Auth is enabled.
-        return createOrGetLocalIdentity("Guest")
+        throw IllegalStateException("Firebase Authentication is not ready. Enable an auth provider in Firebase Console.")
     }
 
     override fun observeIdentity(): Flow<PlayerIdentity?> = identityState.asStateFlow()

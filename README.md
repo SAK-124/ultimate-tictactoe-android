@@ -36,8 +36,7 @@ Neon-themed, snappy Ultimate Tic-Tac-Toe built with Jetpack Compose and Firebase
 
 ## Auth Mode Note
 - The app tries Google sign-in first when `FIREBASE_WEB_CLIENT_ID` is configured.
-- If unavailable, it falls back to anonymous-style local identity for gameplay continuity.
-- To fully enable Firebase Authentication providers in this project, use the Firebase Console `Authentication` tab and complete `Get started` once.
+- If Google sign-in is unavailable, it falls back to Firebase Anonymous Auth.
 
 ## Build Debug APK
 ```bash

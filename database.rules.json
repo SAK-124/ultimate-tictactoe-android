@@ -4,8 +4,8 @@
     ".write": false,
     "rooms": {
       "$roomCode": {
-        ".read": true,
-        ".write": true,
+        ".read": "auth != null && data.child('players').child(auth.uid).exists()",
+        ".write": "auth != null && ((!data.exists() && newData.child('meta').child('hostUid').val() == auth.uid && newData.child('players').child(auth.uid).exists()) || data.child('players').child(auth.uid).exists() || (data.exists() && data.child('state').child('status').val() == 'WAITING' && !data.child('players').child(auth.uid).exists() && newData.child('players').child(auth.uid).exists()))",
         "players": {
           "$uid": {
             ".validate": "newData.hasChildren(['uid', 'nickname', 'symbol'])"
