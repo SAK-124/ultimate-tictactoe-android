@@ -1,0 +1,25 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$roomCode": {
+        ".read": "auth != null && data.child('players').child(auth.uid).exists()",
+        ".write": "auth != null && ((!data.exists() && newData.child('meta').child('hostUid').val() == auth.uid) || data.child('players').child(auth.uid).exists() || (data.exists() && !data.child('players').child(auth.uid).exists() && data.child('players').childrenCount() < 2 && newData.child('players').child(auth.uid).exists()))",
+        "players": {
+          "$uid": {
+            ".validate": "newData.hasChildren(['uid', 'nickname', 'symbol'])"
+          }
+        },
+        "state": {
+          ".validate": "newData.hasChildren(['cells', 'miniWinners', 'nextMiniGrid', 'moveCount', 'currentTurnUid', 'status', 'version'])"
+        },
+        "presence": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        }
+      }
+    }
+  }
+}

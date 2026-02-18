@@ -1,0 +1,18 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+
+# Firebase
+.firebase/
+app/google-services.json
+
+# Signing
+*.jks
+*.keystore
+
+# Logs
+*.log

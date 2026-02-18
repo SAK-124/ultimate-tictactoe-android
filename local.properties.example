@@ -1,0 +1,11 @@
+## Copy this to local.properties and fill your Firebase values if not using google-services.json.
+## NOTE: local.properties should stay uncommitted.
+
+sdk.dir=/Users/you/Library/Android/sdk
+
+FIREBASE_API_KEY=
+FIREBASE_APP_ID=
+FIREBASE_DATABASE_URL=
+FIREBASE_PROJECT_ID=
+FIREBASE_STORAGE_BUCKET=
+FIREBASE_WEB_CLIENT_ID=
