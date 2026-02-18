@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import {
+  get,
   getDatabase,
   onDisconnect,
   onValue,
@@ -96,13 +97,13 @@ export const realtimeClient = {
     let lastError = null;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        await mutateRoom(normalizedCode, (currentRoom) => {
-          if (!currentRoom) {
-            return failure("Room not found");
-          }
+    await mutateRoom(normalizedCode, (currentRoom) => {
+      if (!currentRoom) {
+        return failure("Room not found");
+      }
 
-          return joinRoom(currentRoom, playerId, safeName, Date.now());
-        });
+      return joinRoom(currentRoom, playerId, safeName, Date.now());
+    }, { requireExisting: true });
 
         await this.markPresence(normalizedCode, playerId, true);
         return normalizedCode;
@@ -158,7 +159,7 @@ export const realtimeClient = {
         createMove(miniGridIndex, cellIndex, playerUid),
         Date.now(),
       );
-    });
+    }, { requireExisting: true });
   },
 
   async requestRematch(code, playerUid) {
@@ -170,7 +171,7 @@ export const realtimeClient = {
       }
 
       return requestRematch(currentRoom, playerUid, Date.now());
-    });
+    }, { requireExisting: true });
   },
 
   async claimForfeit(code, claimantUid) {
@@ -182,7 +183,7 @@ export const realtimeClient = {
       }
 
       return claimForfeit(currentRoom, claimantUid, Date.now(), FORFEIT_GRACE_MS);
-    });
+    }, { requireExisting: true });
   },
 
   async markPresence(code, playerUid, connected) {
@@ -218,14 +219,29 @@ export const realtimeClient = {
   },
 };
 
-async function mutateRoom(code, mutation) {
+async function mutateRoom(code, mutation, options = {}) {
   if (!db) notReady();
 
   const roomRef = ref(db, `${ROOM_PATH}/${code}`);
+  let fallbackRoom = null;
+  if (options.requireExisting) {
+    const serverSnap = await get(roomRef);
+    fallbackRoom = fromSnapshot(code, serverSnap.val());
+    if (!fallbackRoom) {
+      throw new Error("Room not found");
+    }
+  }
+
+  let usedFallback = false;
   let transactionFailure = null;
 
   const result = await runTransaction(roomRef, (currentValue) => {
-    const currentRoom = fromSnapshot(code, currentValue);
+    let currentRoom = fromSnapshot(code, currentValue);
+    if (!currentRoom && fallbackRoom && !usedFallback) {
+      currentRoom = fallbackRoom;
+      usedFallback = true;
+    }
+
     const outcome = mutation(currentRoom);
 
     if (!outcome.ok) {
