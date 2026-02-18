@@ -52,6 +52,8 @@ data class MainUiState(
     val firebaseReady: Boolean = false,
     val isInitializing: Boolean = true,
     val isProcessing: Boolean = false,
+    val musicEnabled: Boolean = true,
+    val musicVolume: Float = 0.35f,
     val identity: PlayerIdentity? = null,
     val authState: AuthUiState = AuthUiState.AUTH_LOADING,
     val selectedHomeMode: HomeMode = HomeMode.CREATE,
@@ -85,10 +87,14 @@ class MainViewModel(
         viewModelScope.launch {
             val nickname = appContainer.preferencesStore.nicknameFlow.first()
             val howToSeen = appContainer.preferencesStore.howToSeenFlow.first()
+            val musicEnabled = appContainer.preferencesStore.musicEnabledFlow.first()
+            val musicVolume = appContainer.preferencesStore.musicVolumeFlow.first()
 
             _uiState.update {
                 it.copy(
                     nickname = nickname,
+                    musicEnabled = musicEnabled,
+                    musicVolume = musicVolume,
                     currentScreen = if (howToSeen) AppScreen.HOME else AppScreen.HOW_TO,
                     howToReturnScreen = AppScreen.HOME,
                     firstRunHowTo = !howToSeen,
@@ -113,6 +119,21 @@ class MainViewModel(
     fun onRoomCodeChanged(value: String) {
         val normalized = value.filter { it.isDigit() }.take(4)
         _uiState.update { it.copy(roomCodeInput = normalized) }
+    }
+
+    fun onMusicEnabledChanged(enabled: Boolean) {
+        _uiState.update { it.copy(musicEnabled = enabled) }
+        viewModelScope.launch {
+            appContainer.preferencesStore.setMusicEnabled(enabled)
+        }
+    }
+
+    fun onMusicVolumeChanged(volume: Float) {
+        val normalized = volume.coerceIn(0f, 1f)
+        _uiState.update { it.copy(musicVolume = normalized) }
+        viewModelScope.launch {
+            appContainer.preferencesStore.setMusicVolume(normalized)
+        }
     }
 
     fun onHomeModeSelected(mode: HomeMode) {

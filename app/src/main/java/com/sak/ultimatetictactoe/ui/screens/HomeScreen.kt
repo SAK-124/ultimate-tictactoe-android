@@ -29,7 +29,9 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
@@ -61,6 +63,8 @@ fun HomeScreen(
     onStartSoloGame: () -> Unit,
     onCreateRoom: () -> Unit,
     onJoinRoom: () -> Unit,
+    onMusicEnabledChanged: (Boolean) -> Unit,
+    onMusicVolumeChanged: (Float) -> Unit,
     onOpenHowTo: () -> Unit,
     onContinueWithGoogle: () -> Unit,
     onContinueAsGuest: () -> Unit,
@@ -283,6 +287,42 @@ fun HomeScreen(
                             }
                         }
                     }
+                }
+            }
+
+            NeonPanel {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Music",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Switch(
+                            checked = state.musicEnabled,
+                            onCheckedChange = { enabled ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onMusicEnabledChanged(enabled)
+                            }
+                        )
+                    }
+
+                    Text(
+                        text = if (state.musicEnabled) "Background music is on" else "Background music is off",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+
+                    Slider(
+                        value = state.musicVolume,
+                        enabled = state.musicEnabled,
+                        onValueChange = onMusicVolumeChanged,
+                        valueRange = 0f..1f
+                    )
                 }
             }
 

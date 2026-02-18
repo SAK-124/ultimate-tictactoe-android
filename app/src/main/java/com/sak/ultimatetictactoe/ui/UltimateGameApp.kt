@@ -55,6 +55,14 @@ fun UltimateGameApp(
         audioEngine.setBgmScreen(state.currentScreen)
     }
 
+    LaunchedEffect(state.musicEnabled) {
+        audioEngine.setMusicEnabled(state.musicEnabled)
+    }
+
+    LaunchedEffect(state.musicVolume) {
+        audioEngine.setMusicVolume(state.musicVolume)
+    }
+
     DisposableEffect(lifecycleOwner, audioEngine) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -122,6 +130,8 @@ fun UltimateGameApp(
                             onStartSoloGame = viewModel::startSoloGame,
                             onCreateRoom = viewModel::createRoom,
                             onJoinRoom = viewModel::joinRoom,
+                            onMusicEnabledChanged = viewModel::onMusicEnabledChanged,
+                            onMusicVolumeChanged = viewModel::onMusicVolumeChanged,
                             onOpenHowTo = { viewModel.openHowTo(AppScreen.HOME) },
                             onContinueWithGoogle = {
                                 val intent = viewModel.beginGoogleSignInIntent()

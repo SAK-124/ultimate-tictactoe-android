@@ -23,6 +23,8 @@ class GameAudioEngine(context: Context) {
 
     private var bgmPlayer: MediaPlayer? = null
     private var activeScreen: AppScreen = AppScreen.HOME
+    private var musicEnabled: Boolean = true
+    private var musicVolume: Float = 0.35f
 
     init {
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
@@ -45,6 +47,20 @@ class GameAudioEngine(context: Context) {
         }
     }
 
+    fun setMusicEnabled(enabled: Boolean) {
+        musicEnabled = enabled
+        if (enabled) {
+            resume()
+        } else {
+            pause()
+        }
+    }
+
+    fun setMusicVolume(volume: Float) {
+        musicVolume = volume.coerceIn(0f, 1f)
+        bgmPlayer?.setVolume(musicVolume, musicVolume)
+    }
+
     fun playPlace() {
         playSound(placeSoundId)
     }
@@ -64,7 +80,7 @@ class GameAudioEngine(context: Context) {
     }
 
     fun resume() {
-        if (!shouldPlayBgm(activeScreen)) return
+        if (!musicEnabled || !shouldPlayBgm(activeScreen)) return
 
         val player = ensureBgmPlayer() ?: return
         runCatching {
@@ -98,7 +114,7 @@ class GameAudioEngine(context: Context) {
         }.getOrNull() ?: return null
 
         created.isLooping = true
-        created.setVolume(0.28f, 0.28f)
+        created.setVolume(musicVolume, musicVolume)
         bgmPlayer = created
         return created
     }
