@@ -17,7 +17,10 @@ const state = {
   busy: false,
   notice: "",
   lastForfeitAttemptVersion: -1,
+  lastMoveKey: null,
+  lastMoveTimeoutId: null,
   musicEnabled: localStorage.getItem("uttt.musicEnabled") !== "false",
+  timeOffsetMs: 0,
 };
 
 const app = document.querySelector("#app");
@@ -28,11 +31,11 @@ app.innerHTML = `
         <p class="eyebrow">Ultimate Tic-Tac-Toe</p>
         <button id="music-toggle" class="btn btn-ghost"></button>
       </div>
-      <h1>2-Player Neon Match</h1>
-      <p class="sub">No login. Create a 4-digit room key and share it.</p>
+      <h1>Neon Room Clash</h1>
+      <p class="sub">Fast 2-player matches. No login, just a 4-digit room key.</p>
     </section>
 
-    <section class="panel" id="setup-panel">
+    <section class="panel setup" id="setup-panel">
       <label class="label" for="nickname">Nickname</label>
       <input id="nickname" class="input" maxlength="22" placeholder="Player" />
 
@@ -48,7 +51,7 @@ app.innerHTML = `
       <p id="firebase-warning" class="warning hidden"></p>
     </section>
 
-    <section class="panel hidden" id="room-panel">
+    <section class="panel room hidden" id="room-panel">
       <div class="room-meta">
         <div>
           <p class="label">Room code</p>
@@ -60,14 +63,17 @@ app.innerHTML = `
         </div>
       </div>
 
+      <div id="hud-chips" class="hud-chips"></div>
+
       <p id="status-text" class="status">Waiting for room updates...</p>
+      <p id="direction-text" class="direction"></p>
       <p id="forfeit-text" class="forfeit"></p>
 
       <div id="players" class="players"></div>
 
       <div id="board" class="board" aria-label="Ultimate board"></div>
 
-      <div class="actions-grid actions-room">
+      <div class="actions-grid actions-room" id="room-actions-bar">
         <button id="rematch" class="btn hidden">Rematch</button>
         <button id="leave" class="btn btn-danger">Leave room</button>
       </div>
@@ -83,7 +89,9 @@ const setupPanel = document.querySelector("#setup-panel");
 const roomPanel = document.querySelector("#room-panel");
 const roomCodeActive = document.querySelector("#room-code-active");
 const statusText = document.querySelector("#status-text");
+const directionText = document.querySelector("#direction-text");
 const forfeitText = document.querySelector("#forfeit-text");
+const hudChipsEl = document.querySelector("#hud-chips");
 const playersEl = document.querySelector("#players");
 const boardEl = document.querySelector("#board");
 const rematchBtn = document.querySelector("#rematch");
@@ -91,6 +99,10 @@ const leaveBtn = document.querySelector("#leave");
 const noticeEl = document.querySelector("#notice");
 const firebaseWarning = document.querySelector("#firebase-warning");
 const musicToggle = document.querySelector("#music-toggle");
+const createRoomBtn = document.querySelector("#create-room");
+const joinRoomBtn = document.querySelector("#join-room");
+const copyCodeBtn = document.querySelector("#copy-code");
+const copyLinkBtn = document.querySelector("#copy-link");
 
 nicknameInput.value = state.nickname;
 roomCodeInput.value = state.roomCodeInput;
@@ -119,7 +131,7 @@ roomCodeInput.addEventListener("input", (event) => {
   roomCodeInput.value = state.roomCodeInput;
 });
 
-document.querySelector("#create-room").addEventListener("click", async () => {
+createRoomBtn.addEventListener("click", async () => {
   if (!firebaseReady || state.busy) return;
 
   await runBusy(async () => {
@@ -127,32 +139,35 @@ document.querySelector("#create-room").addEventListener("click", async () => {
     const code = await realtimeClient.createRoom(state.playerId, resolvedNickname());
     await openRoom(code);
     setNotice(`Room ${code} created. Share this key or invite link.`);
+    pulseHaptic([12, 20, 12]);
   });
 });
 
-document.querySelector("#join-room").addEventListener("click", async () => {
+joinRoomBtn.addEventListener("click", async () => {
   if (!firebaseReady || state.busy) return;
   await joinCurrentInput();
 });
 
-document.querySelector("#copy-code").addEventListener("click", async () => {
+copyCodeBtn.addEventListener("click", async () => {
   if (!state.roomCode) return;
 
   try {
     await navigator.clipboard.writeText(state.roomCode);
     setNotice("Room code copied.");
+    pulseHaptic(10);
   } catch {
     setNotice("Copy failed. Share the code manually.");
   }
 });
 
-document.querySelector("#copy-link").addEventListener("click", async () => {
+copyLinkBtn.addEventListener("click", async () => {
   if (!state.roomCode) return;
 
   const inviteUrl = `${window.location.origin}/?room=${state.roomCode}`;
   try {
     await navigator.clipboard.writeText(inviteUrl);
     setNotice("Invite link copied.");
+    pulseHaptic(10);
   } catch {
     setNotice(`Share this link: ${inviteUrl}`);
   }
@@ -168,6 +183,7 @@ rematchBtn.addEventListener("click", async () => {
   await runBusy(async () => {
     await maybeStartMusic();
     await realtimeClient.requestRematch(state.roomCode, state.playerId);
+    pulseHaptic([10, 40, 10]);
   });
 });
 
@@ -181,6 +197,7 @@ boardEl.addEventListener("click", async (event) => {
   await runBusy(async () => {
     await maybeStartMusic();
     await realtimeClient.submitMove(state.roomCode, state.playerId, miniGridIndex, cellIndex);
+    pulseHaptic(9);
   });
 });
 
@@ -224,6 +241,7 @@ setInterval(() => {
   void tickForfeitMonitor();
 }, 1_000);
 
+installAutomationHooks();
 render();
 
 if (urlCode && firebaseReady) {
@@ -242,6 +260,7 @@ async function joinCurrentInput() {
     const code = await realtimeClient.joinRoom(inputCode, state.playerId, resolvedNickname());
     await openRoom(code);
     setNotice(`Joined room ${code}.`);
+    pulseHaptic([10, 16, 10]);
   });
 }
 
@@ -262,6 +281,7 @@ async function openRoom(code) {
   state.unsubscribeRoom = realtimeClient.observeRoom(
     code,
     (room) => {
+      detectLatestMove(state.room, room);
       state.room = room;
       render();
     },
@@ -291,6 +311,7 @@ async function leaveRoom() {
   state.room = null;
   state.roomCode = null;
   state.lastForfeitAttemptVersion = -1;
+  state.lastMoveKey = null;
 
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.delete("room");
@@ -303,8 +324,10 @@ function render() {
   const inRoom = Boolean(state.roomCode);
   setupPanel.classList.toggle("hidden", inRoom);
   roomPanel.classList.toggle("hidden", !inRoom);
+  document.body.classList.toggle("in-room", inRoom);
 
   noticeEl.textContent = state.notice;
+  setButtonBusyState();
 
   if (!inRoom) {
     return;
@@ -314,21 +337,52 @@ function render() {
 
   if (!state.room) {
     statusText.textContent = "Connecting to room...";
+    directionText.textContent = "";
+    forfeitText.textContent = "";
+    hudChipsEl.innerHTML = "";
     playersEl.innerHTML = "";
     boardEl.innerHTML = "";
-    forfeitText.textContent = "";
     rematchBtn.classList.add("hidden");
     return;
   }
 
+  renderHud();
   renderPlayers();
   renderBoard();
 
   statusText.textContent = buildStatusText();
+  directionText.textContent = buildDirectionText();
   forfeitText.textContent = buildForfeitText();
 
   const canRematch = state.room.status === RoomStatus.FINISHED && Object.keys(state.room.players).length === 2;
   rematchBtn.classList.toggle("hidden", !canRematch);
+}
+
+function renderHud() {
+  const room = state.room;
+  if (!room) return;
+
+  const turnLabel = room.status === RoomStatus.ACTIVE
+    ? (room.currentTurnUid === state.playerId ? "Your turn" : "Opponent turn")
+    : (room.status === RoomStatus.WAITING ? "Waiting" : "Match complete");
+
+  const forcedLabel = room.board.nextMiniGrid >= 0 && availableMiniGrids(room.board).has(room.board.nextMiniGrid)
+    ? `Grid ${miniGridName(room.board.nextMiniGrid)}`
+    : "Any open grid";
+
+  const chips = [
+    { label: "Phase", value: room.status },
+    { label: "Turn", value: turnLabel },
+    { label: "Next", value: forcedLabel },
+    { label: "Moves", value: String(room.board.moveCount) },
+  ];
+
+  hudChipsEl.innerHTML = chips.map((chip) => `
+    <article class="chip">
+      <p class="chip-label">${chip.label}</p>
+      <p class="chip-value">${chip.value}</p>
+    </article>
+  `).join("");
 }
 
 function renderPlayers() {
@@ -342,9 +396,10 @@ function renderPlayers() {
       const presence = room.presence[player.uid];
       const isMe = player.uid === state.playerId;
       const online = presence?.connected ?? false;
+      const isTurn = room.currentTurnUid === player.uid && room.status === RoomStatus.ACTIVE;
 
       return `
-        <article class="player-card ${isMe ? "mine" : ""}">
+        <article class="player-card ${isMe ? "mine" : ""} ${isTurn ? "is-turn" : ""}">
           <div>
             <p class="player-name">${escapeHtml(player.nickname)} ${isMe ? "(You)" : ""}</p>
             <p class="player-meta ${player.symbol === "X" ? "mark-x" : "mark-o"}">${player.symbol} ${player.uid === room.hostUid ? "• Host" : ""}</p>
@@ -358,6 +413,16 @@ function renderPlayers() {
 
 function renderBoard() {
   const room = state.room;
+  if (room.status === RoomStatus.WAITING) {
+    boardEl.innerHTML = `
+      <article class="waiting-placeholder">
+        <p class="waiting-title">Room ready. Waiting for player two.</p>
+        <p class="waiting-copy">Send the 4-digit code or invite link to start instantly.</p>
+      </article>
+    `;
+    return;
+  }
+
   const myPlayer = room.players[state.playerId];
   const amParticipant = Boolean(myPlayer);
   const isMyTurn = room.status === RoomStatus.ACTIVE && room.currentTurnUid === state.playerId;
@@ -372,6 +437,7 @@ function renderBoard() {
       const globalIndex = globalBoardIndex(miniGridIndex, cellIndex);
       const value = room.board.cells[globalIndex];
       const cellEmpty = value === BoardState.EMPTY;
+      const cellKey = `${miniGridIndex}-${cellIndex}`;
 
       const playable = (
         amParticipant
@@ -383,12 +449,15 @@ function renderBoard() {
       );
 
       const markClass = value === "X" ? "mark-x" : (value === "O" ? "mark-o" : "");
+      const justPlayedClass = state.lastMoveKey === cellKey ? "just-played" : "";
 
       return `
         <button
-          class="cell ${playable ? "playable" : ""} ${value !== BoardState.EMPTY ? "filled" : ""} ${markClass}"
+          class="cell ${playable ? "playable" : ""} ${value !== BoardState.EMPTY ? "filled" : ""} ${markClass} ${justPlayedClass}"
           data-mini="${miniGridIndex}"
           data-cell="${cellIndex}"
+          data-cell-key="${cellKey}"
+          aria-label="Grid ${miniGridName(miniGridIndex)} cell ${cellIndex + 1}"
           ${playable ? "" : "disabled"}
         >
           ${value === BoardState.EMPTY ? "" : value}
@@ -418,7 +487,7 @@ function buildStatusText() {
     const myTurn = room.currentTurnUid === state.playerId;
     if (myTurn) {
       const symbol = room.players[state.playerId]?.symbol || "?";
-      return `Your turn (${symbol}). Play in highlighted mini-grid.`;
+      return `Your turn (${symbol}).`;
     }
 
     const currentPlayer = room.players[room.currentTurnUid];
@@ -440,6 +509,21 @@ function buildStatusText() {
   return `${winnerName} won the match.`;
 }
 
+function buildDirectionText() {
+  const room = state.room;
+  if (!room || room.status !== RoomStatus.ACTIVE) {
+    return "";
+  }
+
+  const allowedMiniGrids = availableMiniGrids(room.board);
+  if (allowedMiniGrids.size === 1) {
+    const [only] = [...allowedMiniGrids];
+    return `Play inside mini-grid ${miniGridName(only)}.`;
+  }
+
+  return "Play in any highlighted mini-grid.";
+}
+
 function buildForfeitText() {
   const room = state.room;
   if (!room || room.status !== RoomStatus.ACTIVE) return "";
@@ -450,7 +534,7 @@ function buildForfeitText() {
   const foePresence = room.presence[foeUid];
   if (!foePresence || foePresence.connected || !foePresence.disconnectedAt) return "";
 
-  const remainingMs = FORFEIT_GRACE_MS - (Date.now() - foePresence.disconnectedAt);
+  const remainingMs = FORFEIT_GRACE_MS - (nowMs() - foePresence.disconnectedAt);
   if (remainingMs <= 0) {
     return "Opponent disconnected. Claiming forfeit...";
   }
@@ -469,7 +553,7 @@ async function tickForfeitMonitor() {
   const foePresence = room.presence[foeUid];
   if (!foePresence || foePresence.connected || !foePresence.disconnectedAt) return;
 
-  const elapsed = Date.now() - foePresence.disconnectedAt;
+  const elapsed = nowMs() - foePresence.disconnectedAt;
   if (elapsed < FORFEIT_GRACE_MS) {
     render();
     return;
@@ -496,14 +580,28 @@ async function markOffline() {
 
 async function runBusy(task) {
   state.busy = true;
+  setButtonBusyState();
   try {
     await task();
   } catch (error) {
     setNotice(error?.message || "Operation failed.");
   } finally {
     state.busy = false;
+    setButtonBusyState();
     render();
   }
+}
+
+function setButtonBusyState() {
+  const disableLobbyActions = state.busy || !firebaseReady;
+  createRoomBtn.disabled = disableLobbyActions;
+  joinRoomBtn.disabled = disableLobbyActions;
+
+  const disableRoomActions = state.busy || !state.roomCode;
+  copyCodeBtn.disabled = disableRoomActions;
+  copyLinkBtn.disabled = disableRoomActions;
+  leaveBtn.disabled = state.busy;
+  rematchBtn.disabled = state.busy;
 }
 
 function resolvedNickname() {
@@ -534,7 +632,105 @@ async function maybeStartMusic() {
 }
 
 function syncMusicToggle() {
-  musicToggle.textContent = state.musicEnabled ? "Music: On" : "Music: Off";
+  musicToggle.textContent = state.musicEnabled ? "Sound: On" : "Sound: Off";
+}
+
+function detectLatestMove(previousRoom, nextRoom) {
+  if (!previousRoom || !nextRoom) {
+    return;
+  }
+
+  const previous = previousRoom.board.cells;
+  const current = nextRoom.board.cells;
+  if (!previous || !current || previous.length !== current.length) {
+    return;
+  }
+
+  for (let index = 0; index < current.length; index += 1) {
+    if (previous[index] === BoardState.EMPTY && current[index] !== BoardState.EMPTY) {
+      const key = keyFromGlobalIndex(index);
+      state.lastMoveKey = key;
+      if (state.lastMoveTimeoutId) {
+        window.clearTimeout(state.lastMoveTimeoutId);
+      }
+      state.lastMoveTimeoutId = window.setTimeout(() => {
+        state.lastMoveKey = null;
+        render();
+      }, 700);
+      return;
+    }
+  }
+}
+
+function keyFromGlobalIndex(index) {
+  const row = Math.floor(index / 9);
+  const col = index % 9;
+  const miniRow = Math.floor(row / 3);
+  const miniCol = Math.floor(col / 3);
+  const cellRow = row % 3;
+  const cellCol = col % 3;
+  const miniGridIndex = miniRow * 3 + miniCol;
+  const cellIndex = cellRow * 3 + cellCol;
+  return `${miniGridIndex}-${cellIndex}`;
+}
+
+function miniGridName(miniGridIndex) {
+  const row = Math.floor(miniGridIndex / 3) + 1;
+  const col = (miniGridIndex % 3) + 1;
+  return `R${row}C${col}`;
+}
+
+function pulseHaptic(pattern) {
+  if (!navigator.vibrate) return;
+  navigator.vibrate(pattern);
+}
+
+function nowMs() {
+  return Date.now() + state.timeOffsetMs;
+}
+
+function buildRenderState() {
+  const room = state.room;
+  return {
+    mode: state.roomCode ? "room" : "lobby",
+    coordinate_system: "miniGridIndex 0-8 and cellIndex 0-8, row-major",
+    self: {
+      player_id: state.playerId,
+      nickname: resolvedNickname(),
+      in_room: Boolean(state.roomCode),
+    },
+    room: room ? {
+      code: room.code,
+      status: room.status,
+      current_turn_uid: room.currentTurnUid,
+      next_mini_grid: room.board.nextMiniGrid,
+      allowed_mini_grids: [...availableMiniGrids(room.board)],
+      move_count: room.board.moveCount,
+      players: Object.values(room.players).map((player) => ({
+        uid: player.uid,
+        nickname: player.nickname,
+        symbol: player.symbol,
+      })),
+      board_cells: room.board.cells,
+      mini_winners: room.board.miniWinners,
+      win_reason: room.winReason,
+      winner_uid: room.winnerUid,
+    } : null,
+    ui: {
+      busy: state.busy,
+      message: state.notice,
+      music_enabled: state.musicEnabled,
+    },
+  };
+}
+
+function installAutomationHooks() {
+  window.render_game_to_text = () => JSON.stringify(buildRenderState());
+  window.advanceTime = async (ms = 16) => {
+    const delta = Math.max(0, Number(ms) || 0);
+    state.timeOffsetMs += delta;
+    render();
+  };
 }
 
 function getOrCreatePlayerId() {
