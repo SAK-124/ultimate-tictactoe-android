@@ -3,6 +3,9 @@ import { BoardState, RoomStatus, WinReason } from "./engine/game-models";
 import { FORFEIT_GRACE_MS, opponentUid } from "./engine/room-transaction-engine";
 import { availableMiniGrids, globalBoardIndex } from "./engine/ultimate-engine";
 import { firebaseReady, firebaseSetupError, realtimeClient } from "./lib/firebase-client";
+import { createCalmFunSoundtrack } from "./lib/soundtrack";
+
+const soundtrack = createCalmFunSoundtrack();
 
 const state = {
   playerId: getOrCreatePlayerId(),
@@ -14,14 +17,18 @@ const state = {
   busy: false,
   notice: "",
   lastForfeitAttemptVersion: -1,
+  musicEnabled: localStorage.getItem("uttt.musicEnabled") !== "false",
 };
 
 const app = document.querySelector("#app");
 app.innerHTML = `
   <main class="shell">
     <section class="panel hero">
-      <p class="eyebrow">Ultimate Tic-Tac-Toe</p>
-      <h1>2-Player Web Match</h1>
+      <div class="hero-top">
+        <p class="eyebrow">Ultimate Tic-Tac-Toe</p>
+        <button id="music-toggle" class="btn btn-ghost"></button>
+      </div>
+      <h1>2-Player Neon Match</h1>
       <p class="sub">No login. Create a 4-digit room key and share it.</p>
     </section>
 
@@ -47,7 +54,10 @@ app.innerHTML = `
           <p class="label">Room code</p>
           <p class="room-code" id="room-code-active">----</p>
         </div>
-        <button id="copy-code" class="btn">Copy code</button>
+        <div class="room-actions">
+          <button id="copy-code" class="btn btn-ghost">Copy code</button>
+          <button id="copy-link" class="btn btn-ghost">Copy link</button>
+        </div>
       </div>
 
       <p id="status-text" class="status">Waiting for room updates...</p>
@@ -80,6 +90,7 @@ const rematchBtn = document.querySelector("#rematch");
 const leaveBtn = document.querySelector("#leave");
 const noticeEl = document.querySelector("#notice");
 const firebaseWarning = document.querySelector("#firebase-warning");
+const musicToggle = document.querySelector("#music-toggle");
 
 nicknameInput.value = state.nickname;
 roomCodeInput.value = state.roomCodeInput;
@@ -89,13 +100,22 @@ if (!firebaseReady) {
   firebaseWarning.textContent = firebaseSetupError;
 }
 
+const urlCode = normalizeCodeInput(new URLSearchParams(window.location.search).get("room"));
+if (urlCode) {
+  state.roomCodeInput = urlCode;
+  roomCodeInput.value = urlCode;
+  setNotice(`Invite code ${urlCode} loaded.`);
+}
+
+syncMusicToggle();
+
 nicknameInput.addEventListener("input", (event) => {
   state.nickname = event.target.value.slice(0, 22);
   localStorage.setItem("uttt.nickname", state.nickname);
 });
 
 roomCodeInput.addEventListener("input", (event) => {
-  state.roomCodeInput = event.target.value.replace(/\D/g, "").slice(0, 4);
+  state.roomCodeInput = normalizeCodeInput(event.target.value);
   roomCodeInput.value = state.roomCodeInput;
 });
 
@@ -103,25 +123,16 @@ document.querySelector("#create-room").addEventListener("click", async () => {
   if (!firebaseReady || state.busy) return;
 
   await runBusy(async () => {
+    await maybeStartMusic();
     const code = await realtimeClient.createRoom(state.playerId, resolvedNickname());
     await openRoom(code);
-    setNotice(`Room ${code} created. Share this 4-digit key.`);
+    setNotice(`Room ${code} created. Share this key or invite link.`);
   });
 });
 
 document.querySelector("#join-room").addEventListener("click", async () => {
   if (!firebaseReady || state.busy) return;
-
-  if (state.roomCodeInput.length !== 4) {
-    setNotice("Enter a 4-digit room code.");
-    return;
-  }
-
-  await runBusy(async () => {
-    const code = await realtimeClient.joinRoom(state.roomCodeInput, state.playerId, resolvedNickname());
-    await openRoom(code);
-    setNotice(`Joined room ${code}.`);
-  });
+  await joinCurrentInput();
 });
 
 document.querySelector("#copy-code").addEventListener("click", async () => {
@@ -135,6 +146,18 @@ document.querySelector("#copy-code").addEventListener("click", async () => {
   }
 });
 
+document.querySelector("#copy-link").addEventListener("click", async () => {
+  if (!state.roomCode) return;
+
+  const inviteUrl = `${window.location.origin}/?room=${state.roomCode}`;
+  try {
+    await navigator.clipboard.writeText(inviteUrl);
+    setNotice("Invite link copied.");
+  } catch {
+    setNotice(`Share this link: ${inviteUrl}`);
+  }
+});
+
 leaveBtn.addEventListener("click", async () => {
   await leaveRoom();
   setNotice("Left room.");
@@ -143,6 +166,7 @@ leaveBtn.addEventListener("click", async () => {
 rematchBtn.addEventListener("click", async () => {
   if (!state.roomCode || !state.room || state.busy) return;
   await runBusy(async () => {
+    await maybeStartMusic();
     await realtimeClient.requestRematch(state.roomCode, state.playerId);
   });
 });
@@ -155,8 +179,27 @@ boardEl.addEventListener("click", async (event) => {
   const cellIndex = Number(button.dataset.cell);
 
   await runBusy(async () => {
+    await maybeStartMusic();
     await realtimeClient.submitMove(state.roomCode, state.playerId, miniGridIndex, cellIndex);
   });
+});
+
+musicToggle.addEventListener("click", async () => {
+  state.musicEnabled = !state.musicEnabled;
+  localStorage.setItem("uttt.musicEnabled", String(state.musicEnabled));
+
+  if (state.musicEnabled) {
+    const started = await soundtrack.start();
+    if (!started) {
+      setNotice("Tap again to enable soundtrack.");
+      state.musicEnabled = false;
+      localStorage.setItem("uttt.musicEnabled", "false");
+    }
+  } else {
+    soundtrack.stop();
+  }
+
+  syncMusicToggle();
 });
 
 window.addEventListener("pagehide", () => {
@@ -173,11 +216,34 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+document.addEventListener("pointerdown", () => {
+  void maybeStartMusic();
+}, { once: true });
+
 setInterval(() => {
   void tickForfeitMonitor();
 }, 1_000);
 
 render();
+
+if (urlCode && firebaseReady) {
+  void joinCurrentInput();
+}
+
+async function joinCurrentInput() {
+  const inputCode = normalizeCodeInput(state.roomCodeInput);
+  if (!inputCode) {
+    setNotice("Enter the room code.");
+    return;
+  }
+
+  await runBusy(async () => {
+    await maybeStartMusic();
+    const code = await realtimeClient.joinRoom(inputCode, state.playerId, resolvedNickname());
+    await openRoom(code);
+    setNotice(`Joined room ${code}.`);
+  });
+}
 
 async function openRoom(code) {
   if (state.unsubscribeRoom) {
@@ -188,6 +254,10 @@ async function openRoom(code) {
   state.roomCode = code;
   state.roomCodeInput = code;
   roomCodeInput.value = code;
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("room", code);
+  window.history.replaceState({}, "", nextUrl);
 
   state.unsubscribeRoom = realtimeClient.observeRoom(
     code,
@@ -221,6 +291,11 @@ async function leaveRoom() {
   state.room = null;
   state.roomCode = null;
   state.lastForfeitAttemptVersion = -1;
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete("room");
+  window.history.replaceState({}, "", nextUrl);
+
   render();
 }
 
@@ -272,7 +347,7 @@ function renderPlayers() {
         <article class="player-card ${isMe ? "mine" : ""}">
           <div>
             <p class="player-name">${escapeHtml(player.nickname)} ${isMe ? "(You)" : ""}</p>
-            <p class="player-meta">${player.symbol} ${player.uid === room.hostUid ? "• Host" : ""}</p>
+            <p class="player-meta ${player.symbol === "X" ? "mark-x" : "mark-o"}">${player.symbol} ${player.uid === room.hostUid ? "• Host" : ""}</p>
           </div>
           <span class="presence ${online ? "online" : "offline"}">${online ? "Online" : "Offline"}</span>
         </article>
@@ -307,9 +382,11 @@ function renderBoard() {
         && isAllowed
       );
 
+      const markClass = value === "X" ? "mark-x" : (value === "O" ? "mark-o" : "");
+
       return `
         <button
-          class="cell ${playable ? "playable" : ""} ${value !== BoardState.EMPTY ? "filled" : ""}"
+          class="cell ${playable ? "playable" : ""} ${value !== BoardState.EMPTY ? "filled" : ""} ${markClass}"
           data-mini="${miniGridIndex}"
           data-cell="${cellIndex}"
           ${playable ? "" : "disabled"}
@@ -319,10 +396,12 @@ function renderBoard() {
       `;
     }).join("");
 
+    const winnerClass = miniWinner === "X" ? "mark-x" : (miniWinner === "O" ? "mark-o" : "");
+
     return `
       <section class="mini-grid ${isAllowed ? "allowed" : ""} ${isResolved ? "resolved" : ""}">
         <div class="mini-cells">${cellsHtml}</div>
-        ${isResolved ? `<div class="mini-winner">${miniWinner === BoardState.TIE ? "T" : miniWinner}</div>` : ""}
+        ${isResolved ? `<div class="mini-winner ${winnerClass}">${miniWinner === BoardState.TIE ? "T" : miniWinner}</div>` : ""}
       </section>
     `;
   }).join("");
@@ -435,6 +514,27 @@ function resolvedNickname() {
 function setNotice(message) {
   state.notice = message;
   render();
+}
+
+function normalizeCodeInput(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 4);
+}
+
+async function maybeStartMusic() {
+  if (!state.musicEnabled || soundtrack.isRunning()) {
+    return;
+  }
+
+  const started = await soundtrack.start();
+  if (!started) {
+    state.musicEnabled = false;
+    localStorage.setItem("uttt.musicEnabled", "false");
+    syncMusicToggle();
+  }
+}
+
+function syncMusicToggle() {
+  musicToggle.textContent = state.musicEnabled ? "Music: On" : "Music: Off";
 }
 
 function getOrCreatePlayerId() {

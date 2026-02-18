@@ -90,19 +90,33 @@ export const realtimeClient = {
   async joinRoom(code, playerId, nickname) {
     if (!db) notReady();
 
-    const normalizedCode = normalizeCode(code);
+    const normalizedCode = normalizeCode(code, { pad: true });
     const safeName = sanitizeNickname(nickname);
 
-    await mutateRoom(normalizedCode, (currentRoom) => {
-      if (!currentRoom) {
-        return failure("Room not found");
+    let lastError = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await mutateRoom(normalizedCode, (currentRoom) => {
+          if (!currentRoom) {
+            return failure("Room not found");
+          }
+
+          return joinRoom(currentRoom, playerId, safeName, Date.now());
+        });
+
+        await this.markPresence(normalizedCode, playerId, true);
+        return normalizedCode;
+      } catch (error) {
+        lastError = error;
+        if (error?.message !== "Room not found") {
+          throw error;
+        }
       }
 
-      return joinRoom(currentRoom, playerId, safeName, Date.now());
-    });
+      await delay(250);
+    }
 
-    await this.markPresence(normalizedCode, playerId, true);
-    return normalizedCode;
+    throw lastError || new Error("Room not found");
   },
 
   observeRoom(code, onSuccess, onFailure) {
@@ -234,8 +248,12 @@ async function mutateRoom(code, mutation) {
   return parsed;
 }
 
-function normalizeCode(code) {
-  return String(code || "").trim().replace(/\D/g, "").slice(0, 4);
+function normalizeCode(code, options = {}) {
+  const digits = String(code || "").trim().replace(/\D/g, "").slice(0, 4);
+  if (options.pad && digits.length > 0) {
+    return digits.padStart(4, "0");
+  }
+  return digits;
 }
 
 function sanitizeNickname(input) {
@@ -244,10 +262,16 @@ function sanitizeNickname(input) {
 }
 
 function generate4DigitCode() {
-  const value = Math.floor(Math.random() * 10_000);
-  return String(value).padStart(4, "0");
+  const value = Math.floor(Math.random() * 9_000) + 1_000;
+  return String(value);
 }
 
 function failure(reason) {
   return { ok: false, reason };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
