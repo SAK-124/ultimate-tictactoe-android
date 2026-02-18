@@ -1,6 +1,5 @@
 package com.sak.ultimatetictactoe.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -21,13 +20,11 @@ private val NeonDarkScheme = darkColorScheme(
 )
 
 @Composable
-fun UltimateTicTacToeTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit
-) {
+fun UltimateTicTacToeTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = NeonDarkScheme,
         typography = AppTypography,
+        shapes = AppShapes,
         content = content
     )
 }

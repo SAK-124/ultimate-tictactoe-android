@@ -65,7 +65,18 @@ class FirebaseRoomGateway(
             }
 
             if (result.isSuccess) {
-                markPresence(code, identity.uid, connected = true)
+                val presence = runCatching {
+                    markPresence(code, identity.uid, connected = true)
+                }
+
+                if (presence.isFailure) {
+                    return Result.failure(
+                        RoomOperationException(
+                            mapFirebaseMessage(presence.exceptionOrNull()?.message, null)
+                        )
+                    )
+                }
+
                 return Result.success(RoomSession(code = code, identity = identity))
             }
 
@@ -104,7 +115,18 @@ class FirebaseRoomGateway(
         }
 
         if (joinResult.isSuccess) {
-            markPresence(normalizedCode, identity.uid, connected = true)
+            val presence = runCatching {
+                markPresence(normalizedCode, identity.uid, connected = true)
+            }
+
+            if (presence.isFailure) {
+                return Result.failure(
+                    RoomOperationException(
+                        mapFirebaseMessage(presence.exceptionOrNull()?.message, null)
+                    )
+                )
+            }
+
             return Result.success(RoomSession(code = normalizedCode, identity = identity))
         }
 
@@ -136,7 +158,13 @@ class FirebaseRoomGateway(
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    trySend(Result.failure(RoomOperationException(error.message)))
+                    trySend(
+                        Result.failure(
+                            RoomOperationException(
+                                mapFirebaseMessage(error.message, error.code)
+                            )
+                        )
+                    )
                 }
             }
 
@@ -271,7 +299,12 @@ class FirebaseRoomGateway(
                     currentData: DataSnapshot?
                 ) {
                     val result = when {
-                        error != null -> Result.failure(RoomOperationException(error.message))
+                        error != null -> Result.failure(
+                            RoomOperationException(
+                                mapFirebaseMessage(error.message, error.code)
+                            )
+                        )
+
                         !committed -> Result.failure(
                             RoomOperationException(
                                 transactionFailure ?: "Operation aborted"
@@ -305,5 +338,17 @@ class FirebaseRoomGateway(
 
     private fun sanitizeNickname(input: String, fallback: String): String {
         return input.trim().ifBlank { fallback.trim() }.ifBlank { "Player" }
+    }
+
+    private fun mapFirebaseMessage(message: String?, code: Int?): String {
+        if (code == DatabaseError.PERMISSION_DENIED || message?.contains("Permission denied", ignoreCase = true) == true) {
+            return "Permission denied. Sign in and retry, or rejoin the room."
+        }
+
+        if (message?.contains("network", ignoreCase = true) == true) {
+            return "Network issue. Check connection and try again."
+        }
+
+        return message ?: "Unexpected Firebase error"
     }
 }

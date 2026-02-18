@@ -2,11 +2,14 @@ package com.sak.ultimatetictactoe.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,16 +31,32 @@ import com.sak.ultimatetictactoe.ui.theme.TextSecondary
 @Composable
 fun SummaryScreen(
     roomState: RoomState,
-    myUid: String,
+    myUid: String?,
+    isSoloMode: Boolean,
     onRematch: () -> Unit,
     onNewGame: () -> Unit
 ) {
     val winnerName = roomState.winnerUid?.let { roomState.players[it]?.nickname }
-    val meWon = roomState.winnerUid == myUid
+    val meWon = myUid != null && roomState.winnerUid == myUid
     val xWins = roomState.board.miniWinners.count { it == 'X' }
     val oWins = roomState.board.miniWinners.count { it == 'O' }
+    val title = when {
+        roomState.winReason == WinReason.DRAW -> "DRAW"
+        isSoloMode && roomState.winnerSymbol?.mark == 'X' -> "X WINS"
+        isSoloMode && roomState.winnerSymbol?.mark == 'O' -> "O WINS"
+        meWon -> "VICTORY"
+        roomState.winnerUid != null -> "DEFEAT"
+        else -> "MATCH OVER"
+    }
+    val titleColor = when {
+        roomState.winReason == WinReason.DRAW -> TextSecondary
+        isSoloMode && roomState.winnerSymbol?.mark == 'X' -> NeonBlue
+        isSoloMode && roomState.winnerSymbol?.mark == 'O' -> NeonPink
+        meWon -> NeonBlue
+        else -> NeonPink
+    }
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -49,58 +68,84 @@ fun SummaryScreen(
                     )
                 )
             )
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = if (meWon) "VICTORY" else if (roomState.winReason == WinReason.DRAW) "DRAW" else "MATCH OVER",
-            style = MaterialTheme.typography.headlineLarge,
-            color = if (meWon) NeonBlue else NeonPink
-        )
+        val compactHeight = maxHeight < 740.dp
 
-        Text(
-            text = when (roomState.winReason) {
-                WinReason.NORMAL -> "${winnerName ?: "A player"} won by claiming three mini-grids in a row."
-                WinReason.FORFEIT -> "${winnerName ?: "A player"} wins by forfeit after disconnect grace period."
-                WinReason.DRAW -> "All mini-grids resolved with no macro line."
-                WinReason.NONE -> "Result pending."
-            },
-            style = MaterialTheme.typography.bodyLarge,
-            color = TextSecondary
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = if (compactHeight) 14.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineLarge,
+                color = titleColor
+            )
 
-        NeonPanel {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatRow("Room", roomState.code)
-                StatRow("Total Moves", roomState.board.moveCount.toString())
-                StatRow("Mini-grids won (X)", xWins.toString())
-                StatRow("Mini-grids won (O)", oWins.toString())
-                StatRow("Match time", formatElapsed(roomState.startedAt, roomState.updatedAt))
-            }
-        }
+            Text(
+                text = when (roomState.winReason) {
+                    WinReason.NORMAL -> "${winnerName ?: "A player"} made the winning line."
+                    WinReason.FORFEIT -> "${winnerName ?: "A player"} won by forfeit after disconnect grace."
+                    WinReason.DRAW -> "All mini-grids resolved with no macro line."
+                    WinReason.NONE -> "Result pending."
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextSecondary
+            )
 
-        NeonPanel {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Rematch",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "Host ready: ${if (roomState.rematchHostReady) "Yes" else "No"}  •  Guest ready: ${if (roomState.rematchGuestReady) "Yes" else "No"}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-
-                Button(onClick = onRematch, modifier = Modifier.fillMaxWidth()) {
-                    Text("Rematch")
+            NeonPanel {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatRow("Room", if (isSoloMode) "Solo" else roomState.code)
+                    StatRow("Moves", roomState.board.moveCount.toString())
+                    StatRow("X mini-grids", xWins.toString())
+                    StatRow("O mini-grids", oWins.toString())
+                    StatRow("Time", formatElapsed(roomState.startedAt, roomState.updatedAt))
                 }
+            }
 
-                OutlinedButton(onClick = onNewGame, modifier = Modifier.fillMaxWidth()) {
-                    Text("Back To Home")
+            NeonPanel {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Rematch",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    if (isSoloMode) {
+                        Text(
+                            text = "Instant board reset for another pass-and-play round.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    } else {
+                        Text(
+                            text = "Host ready: ${if (roomState.rematchHostReady) "Yes" else "No"}  •  Guest ready: ${if (roomState.rematchGuestReady) "Yes" else "No"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+
+                    Button(
+                        onClick = onRematch,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .sizeIn(minHeight = 52.dp)
+                    ) {
+                        Text(if (isSoloMode) "Play Again" else "Rematch")
+                    }
+
+                    OutlinedButton(
+                        onClick = onNewGame,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .sizeIn(minHeight = 52.dp)
+                    ) {
+                        Text("Back To Home")
+                    }
                 }
             }
         }

@@ -1,7 +1,9 @@
 package com.sak.ultimatetictactoe.data.auth
 
 import android.content.Context
+import android.content.Intent
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -50,37 +52,105 @@ class FirebaseAuthGateway(
             return it
         }
 
-        val anonymous = runCatching { firebaseAuth.signInAnonymously().await().user?.toPlayerIdentity() }
-            .getOrNull()
+        throw IllegalStateException("Choose Google or Guest to continue")
+    }
+
+    override fun beginGoogleSignInIntent(): Intent? {
+        return googleClient()?.signInIntent
+    }
+
+    override suspend fun completeGoogleSignIn(resultData: Intent?): PlayerIdentity {
+        if (!firebaseReady) {
+            return createOrGetLocalIdentity("Offline Player")
+        }
+
+        val webClientId = BuildConfig.FIREBASE_WEB_CLIENT_ID
+        if (webClientId.isBlank()) {
+            throw IllegalStateException("Google Sign-In is not configured for this build")
+        }
+
+        val account = runCatching {
+            GoogleSignIn.getSignedInAccountFromIntent(resultData).await()
+        }.getOrElse {
+            throw IllegalStateException("Google Sign-In was canceled or failed")
+        }
+
+        val token = account.idToken ?: throw IllegalStateException("Google account token was missing")
+        val credential = GoogleAuthProvider.getCredential(token, null)
+
+        val firebaseUser = runCatching {
+            firebaseAuth.signInWithCredential(credential).await().user
+        }.getOrElse {
+            throw IllegalStateException("Firebase auth failed after Google Sign-In")
+        }
+
+        val identity = firebaseUser?.toPlayerIdentity()
+            ?: throw IllegalStateException("Google Sign-In did not return a Firebase user")
+
+        identityState.value = identity
+        return identity
+    }
+
+    override suspend fun continueAsGuest(): PlayerIdentity {
+        if (!firebaseReady) {
+            return createOrGetLocalIdentity("Offline Player")
+        }
+
+        val anonymous = runCatching {
+            firebaseAuth.signInAnonymously().await().user?.toPlayerIdentity()
+        }.getOrNull()
 
         if (anonymous != null) {
             identityState.value = anonymous
             return anonymous
         }
 
-        throw IllegalStateException("Firebase Authentication is not ready. Enable an auth provider in Firebase Console.")
+        throw IllegalStateException("Guest sign-in is unavailable. Enable Anonymous auth in Firebase")
+    }
+
+    override suspend fun signOut() {
+        if (firebaseReady) {
+            firebaseAuth.signOut()
+            runCatching { googleClient()?.signOut()?.await() }
+        }
+
+        localFallbackIdentity = null
+        identityState.value = null
     }
 
     override fun observeIdentity(): Flow<PlayerIdentity?> = identityState.asStateFlow()
 
+    override fun dispose() {
+        if (firebaseReady) {
+            firebaseAuth.removeAuthStateListener(authStateListener)
+        }
+    }
+
     private suspend fun tryGoogleSignInSilently(): PlayerIdentity? {
+        val client = googleClient() ?: return null
+
+        return runCatching {
+            val account = client.silentSignIn().await()
+            val idToken = account.idToken ?: return null
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            firebaseAuth.signInWithCredential(credential).await().user?.toPlayerIdentity()
+        }.getOrNull()
+    }
+
+    private fun googleClient(): GoogleSignInClient? {
+        if (!firebaseReady) return null
+
         val webClientId = BuildConfig.FIREBASE_WEB_CLIENT_ID
         if (webClientId.isBlank()) {
             return null
         }
 
-        return runCatching {
-            val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail()
-                .requestIdToken(webClientId)
-                .build()
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestIdToken(webClientId)
+            .build()
 
-            val account = GoogleSignIn.getClient(context, options).silentSignIn().await()
-            val idToken = account.idToken ?: return null
-
-            val credential = GoogleAuthProvider.getCredential(idToken, null)
-            firebaseAuth.signInWithCredential(credential).await().user?.toPlayerIdentity()
-        }.getOrNull()
+        return GoogleSignIn.getClient(context, options)
     }
 
     private fun FirebaseUser.toPlayerIdentity(): PlayerIdentity {

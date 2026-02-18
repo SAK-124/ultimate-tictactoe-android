@@ -2,10 +2,13 @@ package com.sak.ultimatetictactoe.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -27,7 +30,7 @@ fun HowToScreen(
     firstRun: Boolean,
     onDone: () -> Unit
 ) {
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -39,48 +42,58 @@ fun HowToScreen(
                     )
                 )
             )
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "How to Play",
-            style = MaterialTheme.typography.headlineMedium,
-            color = NeonBlue
-        )
+        val compactHeight = maxHeight < 760.dp
 
-        Text(
-            text = "Master the 9x9 board by winning mini-grids and controlling where your opponent is sent next.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
-        )
-
-        RuleCard(
-            title = "1) The Move-Mapping Rule",
-            body = "Your move decides your opponent's next mini-grid. Play a cell in position 8, they must play in mini-grid 8."
-        )
-
-        RuleCard(
-            title = "2) Claim Mini-Grids",
-            body = "Get three-in-a-row inside a mini-grid to claim it with your symbol (X or O)."
-        )
-
-        RuleCard(
-            title = "3) Win the Macro Board",
-            body = "Claim three mini-grids in a line on the large 3x3 board to win the whole match."
-        )
-
-        RuleCard(
-            title = "4) Open Field Rule",
-            body = "If you are sent to a full or already won mini-grid, you can play in any unfinished mini-grid.",
-            accent = WarningYellow
-        )
-
-        Button(
-            onClick = onDone,
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = if (compactHeight) 14.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(if (firstRun) "Start Playing" else "Back")
+            Text(
+                text = "How to Play",
+                style = MaterialTheme.typography.headlineMedium,
+                color = NeonBlue
+            )
+
+            Text(
+                text = "Win mini-grids, then win the macro board.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+
+            RuleCard(
+                title = "Move Mapping",
+                body = "The cell you play decides which mini-grid your opponent must play in next."
+            )
+
+            RuleCard(
+                title = "Claiming Grids",
+                body = "Get three in a row inside a mini-grid to claim it for X or O."
+            )
+
+            RuleCard(
+                title = "Final Victory",
+                body = "Claim three mini-grids in a row on the big board to win the match."
+            )
+
+            RuleCard(
+                title = "Open Field",
+                body = "If directed to a full or already won mini-grid, play in any unfinished mini-grid.",
+                accent = WarningYellow
+            )
+
+            Button(
+                onClick = onDone,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .sizeIn(minHeight = 52.dp)
+            ) {
+                Text(if (firstRun) "Start Playing" else "Back")
+            }
         }
     }
 }
@@ -92,10 +105,10 @@ private fun RuleCard(
     accent: androidx.compose.ui.graphics.Color = NeonPink
 ) {
     NeonPanel {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = accent,
                 fontWeight = FontWeight.Bold
             )

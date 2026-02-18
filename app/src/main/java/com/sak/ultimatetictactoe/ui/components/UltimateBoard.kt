@@ -1,11 +1,6 @@
 package com.sak.ultimatetictactoe.ui.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -13,6 +8,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,10 +26,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,12 +56,13 @@ fun UltimateBoard(
     allowedMiniGrids: Set<Int>,
     interactive: Boolean,
     modifier: Modifier = Modifier,
-    onCellTapped: (miniGridIndex: Int, cellIndex: Int) -> Unit
+    onCellTapped: (miniGridIndex: Int, cellIndex: Int) -> Unit,
+    onInvalidTap: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(MaterialTheme.shapes.large)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(Color(0xFF050E1E), Color(0xFF091A33))
@@ -84,6 +84,7 @@ fun UltimateBoard(
                         highlighted = miniGridIndex in allowedMiniGrids,
                         interactive = interactive,
                         onCellTapped = onCellTapped,
+                        onInvalidTap = onInvalidTap,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -99,14 +100,15 @@ private fun MiniGrid(
     highlighted: Boolean,
     interactive: Boolean,
     onCellTapped: (miniGridIndex: Int, cellIndex: Int) -> Unit,
+    onInvalidTap: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     val pulseTransition = rememberInfiniteTransition(label = "mini-pulse")
     val pulse by pulseTransition.animateFloat(
-        initialValue = 0.72f,
+        initialValue = 0.75f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900),
+            animation = tween(durationMillis = 920),
             repeatMode = RepeatMode.Reverse
         ),
         label = "mini-pulse-alpha"
@@ -117,9 +119,9 @@ private fun MiniGrid(
             board.miniWinnerAt(miniGridIndex) == 'X' -> NeonBlue
             board.miniWinnerAt(miniGridIndex) == 'O' -> NeonPink
             highlighted -> NeonBlue.copy(alpha = pulse)
-            else -> Color(0xFF1D2C44)
+            else -> Color(0xFF223754)
         },
-        animationSpec = tween(240),
+        animationSpec = tween(230),
         label = "mini-border"
     )
 
@@ -128,12 +130,12 @@ private fun MiniGrid(
             .aspectRatio(1f)
             .border(
                 BorderStroke(
-                    width = if (highlighted) 2.2.dp else 1.2.dp,
+                    width = if (highlighted) 2.dp else 1.dp,
                     color = borderColor
                 ),
-                shape = RoundedCornerShape(10.dp)
+                shape = MaterialTheme.shapes.medium
             )
-            .background(NightCard.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+            .background(NightCard.copy(alpha = 0.72f), MaterialTheme.shapes.medium)
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -145,13 +147,19 @@ private fun MiniGrid(
                 for (cellCol in 0 until 3) {
                     val cellIndex = cellRow * 3 + cellCol
                     val symbol = board.cellAt(miniGridIndex, cellIndex)
-                    val enabled = interactive && highlighted && symbol == BoardState.EMPTY && !board.isMiniResolved(miniGridIndex)
+                    val isPlayableCell = highlighted && symbol == BoardState.EMPTY && !board.isMiniResolved(miniGridIndex)
+
                     BoardCell(
                         symbol = symbol,
-                        enabled = enabled,
+                        enabled = isPlayableCell,
+                        interactive = interactive,
                         onTap = {
-                            if (enabled) {
-                                onCellTapped(miniGridIndex, cellIndex)
+                            if (interactive) {
+                                if (isPlayableCell) {
+                                    onCellTapped(miniGridIndex, cellIndex)
+                                } else {
+                                    onInvalidTap?.invoke()
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f)
@@ -166,33 +174,35 @@ private fun MiniGrid(
 private fun BoardCell(
     symbol: Char,
     enabled: Boolean,
+    interactive: Boolean,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.94f else 1f,
-        animationSpec = spring(stiffness = 680f, dampingRatio = 0.62f),
+        targetValue = if (isPressed && interactive) 0.95f else 1f,
+        animationSpec = spring(stiffness = 620f, dampingRatio = 0.68f),
         label = "cell-press-scale"
     )
 
     val backgroundColor = when (symbol) {
         'X' -> GlowBlue
         'O' -> GlowPink
-        else -> Color(0xFF111D31)
+        else -> if (enabled) Color(0xFF152740) else Color(0xFF101D31)
     }
 
     Box(
         modifier = modifier
             .aspectRatio(1f)
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .scale(scale)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(MaterialTheme.shapes.small)
             .background(backgroundColor)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                enabled = enabled,
+                enabled = interactive,
                 onClick = onTap
             ),
         contentAlignment = Alignment.Center
@@ -200,8 +210,8 @@ private fun BoardCell(
         AnimatedContent(
             targetState = symbol,
             transitionSpec = {
-                (scaleIn(initialScale = 0.6f, animationSpec = tween(180)) + fadeIn(tween(120))).togetherWith(
-                    scaleOut(targetScale = 1.25f, animationSpec = tween(140)) + fadeOut(tween(120))
+                (scaleIn(initialScale = 0.6f, animationSpec = tween(170)) + fadeIn(tween(120))).togetherWith(
+                    scaleOut(targetScale = 1.2f, animationSpec = tween(140)) + fadeOut(tween(110))
                 )
             },
             label = "symbol-reveal"
@@ -209,7 +219,7 @@ private fun BoardCell(
             when (symbolState) {
                 'X' -> BoardSymbol("✕", NeonBlue)
                 'O' -> BoardSymbol("◉", NeonPink)
-                else -> Spacer(modifier = Modifier.size(10.dp))
+                else -> Spacer(modifier = Modifier.size(8.dp))
             }
         }
     }
@@ -219,10 +229,10 @@ private fun BoardCell(
 private fun BoardSymbol(value: String, color: Color) {
     Text(
         text = value,
-        style = MaterialTheme.typography.titleLarge,
+        style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.ExtraBold,
         color = color,
-        fontSize = 20.sp,
+        fontSize = 19.sp,
         modifier = Modifier.padding(top = 1.dp)
     )
 }

@@ -8,15 +8,15 @@
         ".write": "auth != null && ((!data.exists() && newData.child('meta').child('hostUid').val() == auth.uid && newData.child('players').child(auth.uid).exists()) || data.child('players').child(auth.uid).exists() || (data.exists() && data.child('state').child('status').val() == 'WAITING' && !data.child('players').child(auth.uid).exists() && newData.child('players').child(auth.uid).exists()))",
         "players": {
           "$uid": {
-            ".validate": "newData.hasChildren(['uid', 'nickname', 'symbol'])"
+            ".validate": "newData.hasChildren(['uid','nickname','symbol']) && newData.child('uid').val() == $uid"
           }
         },
         "state": {
-          ".validate": "newData.hasChildren(['cells', 'miniWinners', 'nextMiniGrid', 'moveCount', 'currentTurnUid', 'status', 'version'])"
+          ".validate": "newData.hasChildren(['cells','miniWinners','nextMiniGrid','moveCount','currentTurnUid','status','version'])"
         },
         "presence": {
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid"
+            ".validate": "newData.hasChildren(['uid','connected','lastSeen','disconnectedAt']) && newData.child('uid').val() == $uid"
           }
         }
       }

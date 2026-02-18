@@ -1,16 +1,23 @@
 package com.sak.ultimatetictactoe.ui
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sak.ultimatetictactoe.data.AppContainer
+import com.sak.ultimatetictactoe.domain.AuthProvider
+import com.sak.ultimatetictactoe.domain.BoardState
 import com.sak.ultimatetictactoe.domain.Move
 import com.sak.ultimatetictactoe.domain.MoveResult
 import com.sak.ultimatetictactoe.domain.PlayerIdentity
+import com.sak.ultimatetictactoe.domain.PlayerPresence
+import com.sak.ultimatetictactoe.domain.PlayerSymbol
 import com.sak.ultimatetictactoe.domain.RematchState
+import com.sak.ultimatetictactoe.domain.RoomPlayer
 import com.sak.ultimatetictactoe.domain.RoomState
 import com.sak.ultimatetictactoe.domain.RoomStatus
 import com.sak.ultimatetictactoe.domain.RoomTransactionEngine
+import com.sak.ultimatetictactoe.domain.WinReason
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,11 +35,28 @@ enum class AppScreen {
     SUMMARY
 }
 
+enum class HomeMode {
+    CREATE,
+    JOIN,
+    SOLO
+}
+
+enum class AuthUiState {
+    AUTHENTICATED_GOOGLE,
+    AUTHENTICATED_GUEST,
+    AUTH_LOADING,
+    AUTH_ERROR
+}
+
 data class MainUiState(
     val firebaseReady: Boolean = false,
     val isInitializing: Boolean = true,
     val isProcessing: Boolean = false,
     val identity: PlayerIdentity? = null,
+    val authState: AuthUiState = AuthUiState.AUTH_LOADING,
+    val selectedHomeMode: HomeMode = HomeMode.CREATE,
+    val isAuthRequired: Boolean = true,
+    val isSoloMode: Boolean = false,
     val nickname: String = "",
     val roomCodeInput: String = "",
     val currentRoomCode: String? = null,
@@ -41,8 +65,7 @@ data class MainUiState(
     val howToReturnScreen: AppScreen = AppScreen.HOME,
     val firstRunHowTo: Boolean = false,
     val opponentGraceRemainingMs: Long? = null,
-    val errorMessage: String? = null,
-    val infoMessage: String? = null
+    val snackbarMessage: String? = null
 )
 
 class MainViewModel(
@@ -68,11 +91,13 @@ class MainViewModel(
                     nickname = nickname,
                     currentScreen = if (howToSeen) AppScreen.HOME else AppScreen.HOW_TO,
                     howToReturnScreen = AppScreen.HOME,
-                    firstRunHowTo = !howToSeen
+                    firstRunHowTo = !howToSeen,
+                    authState = AuthUiState.AUTH_LOADING,
+                    isAuthRequired = true
                 )
             }
 
-            signIn()
+            restoreIdentity()
         }
     }
 
@@ -88,6 +113,10 @@ class MainViewModel(
     fun onRoomCodeChanged(value: String) {
         val normalized = value.uppercase().filter { it.isLetterOrDigit() }.take(6)
         _uiState.update { it.copy(roomCodeInput = normalized) }
+    }
+
+    fun onHomeModeSelected(mode: HomeMode) {
+        _uiState.update { it.copy(selectedHomeMode = mode) }
     }
 
     fun openHowTo(fromScreen: AppScreen) {
@@ -115,15 +144,187 @@ class MainViewModel(
         }
     }
 
-    fun createRoom() {
-        val identity = _uiState.value.identity ?: return
+    fun beginGoogleSignInIntent(): Intent? {
+        if (_uiState.value.isProcessing) {
+            return null
+        }
+
+        val intent = appContainer.authGateway.beginGoogleSignInIntent()
+        if (intent == null) {
+            postSnackbar("Google Sign-In is not configured for this build")
+            _uiState.update {
+                it.copy(
+                    authState = AuthUiState.AUTH_ERROR,
+                    isAuthRequired = true
+                )
+            }
+            return null
+        }
+
+        _uiState.update {
+            it.copy(
+                isProcessing = true,
+                authState = AuthUiState.AUTH_LOADING
+            )
+        }
+        return intent
+    }
+
+    fun onGoogleSignInResult(resultData: Intent?) {
+        viewModelScope.launch {
+            val result = runCatching {
+                appContainer.authGateway.completeGoogleSignIn(resultData)
+            }
+
+            result.onSuccess { identity ->
+                applyIdentity(identity)
+                postSnackbar("Signed in with Google")
+            }.onFailure {
+                _uiState.update {
+                    it.copy(
+                        isProcessing = false,
+                        authState = AuthUiState.AUTH_ERROR,
+                        isAuthRequired = true
+                    )
+                }
+                postSnackbar(it.message ?: "Google Sign-In failed")
+            }
+        }
+    }
+
+    fun continueAsGuest() {
+        if (_uiState.value.isProcessing) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isProcessing = true, errorMessage = null, infoMessage = null) }
-            val result = appContainer.roomGateway.createRoom(
-                identity = identity,
-                nickname = resolvedNickname(identity)
+            _uiState.update {
+                it.copy(
+                    isProcessing = true,
+                    authState = AuthUiState.AUTH_LOADING
+                )
+            }
+
+            val result = runCatching {
+                appContainer.authGateway.continueAsGuest()
+            }
+
+            result.onSuccess { identity ->
+                applyIdentity(identity)
+                postSnackbar("Playing as Guest")
+            }.onFailure {
+                _uiState.update {
+                    it.copy(
+                        isProcessing = false,
+                        authState = AuthUiState.AUTH_ERROR,
+                        isAuthRequired = true
+                    )
+                }
+                postSnackbar(it.message ?: "Guest sign-in failed")
+            }
+        }
+    }
+
+    fun signOut() {
+        if (_uiState.value.currentRoomCode != null && !_uiState.value.isSoloMode) {
+            postSnackbar("Leave the room before switching account")
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching { appContainer.authGateway.signOut() }
+
+            _uiState.update {
+                it.copy(
+                    identity = null,
+                    authState = AuthUiState.AUTH_ERROR,
+                    isAuthRequired = true,
+                    isProcessing = false
+                )
+            }
+            postSnackbar("Signed out")
+        }
+    }
+
+    fun startSoloGame() {
+        if (_uiState.value.isProcessing) return
+
+        roomObservationJob?.cancel()
+        roomObservationJob = null
+        forfeitMonitorJob?.cancel()
+        forfeitMonitorJob = null
+        forfeitClaimInFlight = false
+
+        val now = System.currentTimeMillis()
+        val xUid = "solo-x"
+        val oUid = "solo-o"
+        val baseName = _uiState.value.nickname.trim()
+
+        val soloRoom = RoomState(
+            code = "SOLO",
+            hostUid = xUid,
+            players = mapOf(
+                xUid to RoomPlayer(
+                    uid = xUid,
+                    nickname = if (baseName.isBlank()) "Player X" else "$baseName (X)",
+                    symbol = PlayerSymbol.X,
+                    joinedAt = now
+                ),
+                oUid to RoomPlayer(
+                    uid = oUid,
+                    nickname = "Player O",
+                    symbol = PlayerSymbol.O,
+                    joinedAt = now
+                )
+            ),
+            status = RoomStatus.ACTIVE,
+            board = BoardState(),
+            currentTurnUid = xUid,
+            winnerUid = null,
+            winnerSymbol = null,
+            winReason = WinReason.NONE,
+            startedAt = now,
+            updatedAt = now,
+            version = 0,
+            presence = mapOf(
+                xUid to PlayerPresence(xUid, connected = true, lastSeen = now, disconnectedAt = null),
+                oUid to PlayerPresence(oUid, connected = true, lastSeen = now, disconnectedAt = null)
+            ),
+            rematchHostReady = false,
+            rematchGuestReady = false,
+            rematchNonce = 0
+        )
+
+        _uiState.update {
+            it.copy(
+                isSoloMode = true,
+                roomState = soloRoom,
+                currentRoomCode = null,
+                currentScreen = AppScreen.GAME,
+                opponentGraceRemainingMs = null
             )
+        }
+    }
+
+    fun createRoom() {
+        val snapshot = _uiState.value
+        val identity = snapshot.identity
+        if (snapshot.isProcessing) return
+
+        if (identity == null) {
+            postSnackbar("Sign in first (Google or Guest)")
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessing = true, isSoloMode = false) }
+
+            val result = runCatching {
+                appContainer.roomGateway.createRoom(
+                    identity = identity,
+                    nickname = resolvedNickname(identity)
+                )
+            }.getOrElse { throwable ->
+                Result.failure(throwable)
+            }
 
             result.onSuccess { session ->
                 startRoomObservation(session.code)
@@ -133,36 +334,45 @@ class MainViewModel(
                         currentScreen = AppScreen.GAME,
                         roomCodeInput = session.code,
                         isProcessing = false,
-                        infoMessage = "Room ${session.code} created"
+                        isSoloMode = false
                     )
                 }
+                postSnackbar("Room ${session.code} created")
             }.onFailure { throwable ->
-                _uiState.update {
-                    it.copy(
-                        isProcessing = false,
-                        errorMessage = throwable.message ?: "Failed to create room"
-                    )
-                }
+                _uiState.update { it.copy(isProcessing = false) }
+                postSnackbar(throwable.message ?: "Failed to create room")
             }
         }
     }
 
     fun joinRoom() {
-        val current = _uiState.value
-        val identity = current.identity ?: return
-        val code = current.roomCodeInput
+        val snapshot = _uiState.value
+        val identity = snapshot.identity
+        val code = snapshot.roomCodeInput
+        if (snapshot.isProcessing) return
+
+        if (identity == null) {
+            postSnackbar("Sign in first (Google or Guest)")
+            return
+        }
+
         if (code.length < 4) {
-            _uiState.update { it.copy(errorMessage = "Enter a valid room code") }
+            postSnackbar("Enter a valid room code")
             return
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isProcessing = true, errorMessage = null, infoMessage = null) }
-            val result = appContainer.roomGateway.joinRoom(
-                code = code,
-                identity = identity,
-                nickname = resolvedNickname(identity)
-            )
+            _uiState.update { it.copy(isProcessing = true, isSoloMode = false) }
+
+            val result = runCatching {
+                appContainer.roomGateway.joinRoom(
+                    code = code,
+                    identity = identity,
+                    nickname = resolvedNickname(identity)
+                )
+            }.getOrElse { throwable ->
+                Result.failure(throwable)
+            }
 
             result.onSuccess { session ->
                 startRoomObservation(session.code)
@@ -172,24 +382,56 @@ class MainViewModel(
                         currentScreen = AppScreen.GAME,
                         roomCodeInput = session.code,
                         isProcessing = false,
-                        infoMessage = "Joined room ${session.code}"
+                        isSoloMode = false
                     )
                 }
+                postSnackbar("Joined room ${session.code}")
             }.onFailure { throwable ->
-                _uiState.update {
-                    it.copy(
-                        isProcessing = false,
-                        errorMessage = throwable.message ?: "Failed to join room"
-                    )
-                }
+                _uiState.update { it.copy(isProcessing = false) }
+                postSnackbar(throwable.message ?: "Failed to join room")
             }
         }
     }
 
     fun submitMove(miniGridIndex: Int, cellIndex: Int) {
         val current = _uiState.value
+        val roomState = current.roomState ?: return
+
+        if (current.isSoloMode) {
+            val soloMove = RoomTransactionEngine.submitMove(
+                roomState = roomState,
+                move = Move(
+                    miniGridIndex = miniGridIndex,
+                    cellIndex = cellIndex,
+                    playerUid = roomState.currentTurnUid
+                ),
+                now = System.currentTimeMillis()
+            )
+
+            when (soloMove) {
+                is RoomTransactionEngine.Outcome.Success -> {
+                    val nextRoom = soloMove.roomState
+                    _uiState.update {
+                        it.copy(
+                            roomState = nextRoom,
+                            currentScreen = if (nextRoom.status == RoomStatus.FINISHED) AppScreen.SUMMARY else AppScreen.GAME
+                        )
+                    }
+                }
+
+                is RoomTransactionEngine.Outcome.Failure -> {
+                    postSnackbar(soloMove.reason)
+                }
+            }
+            return
+        }
+
         val roomCode = current.currentRoomCode ?: return
-        val uid = current.identity?.uid ?: return
+        val uid = current.identity?.uid
+        if (uid == null) {
+            postSnackbar("You are signed out")
+            return
+        }
 
         viewModelScope.launch {
             val result = appContainer.roomGateway.submitMove(
@@ -200,12 +442,12 @@ class MainViewModel(
             when (result) {
                 is MoveResult.Accepted -> {
                     _uiState.update { state ->
-                        state.copy(roomState = result.roomState, errorMessage = null)
+                        state.copy(roomState = result.roomState)
                     }
                 }
 
                 is MoveResult.Rejected -> {
-                    _uiState.update { it.copy(errorMessage = result.reason) }
+                    postSnackbar(result.reason)
                 }
             }
         }
@@ -213,8 +455,34 @@ class MainViewModel(
 
     fun requestRematch() {
         val current = _uiState.value
+        val roomState = current.roomState
+
+        if (current.isSoloMode && roomState != null) {
+            val reset = roomState.copy(
+                board = BoardState(),
+                status = RoomStatus.ACTIVE,
+                currentTurnUid = roomState.hostUid,
+                winnerUid = null,
+                winnerSymbol = null,
+                winReason = WinReason.NONE,
+                updatedAt = System.currentTimeMillis(),
+                version = roomState.version + 1,
+                rematchHostReady = false,
+                rematchGuestReady = false,
+                rematchNonce = roomState.rematchNonce + 1
+            )
+            _uiState.update {
+                it.copy(roomState = reset, currentScreen = AppScreen.GAME)
+            }
+            return
+        }
+
         val roomCode = current.currentRoomCode ?: return
-        val uid = current.identity?.uid ?: return
+        val uid = current.identity?.uid
+        if (uid == null) {
+            postSnackbar("You are signed out")
+            return
+        }
 
         viewModelScope.launch {
             when (val result = appContainer.roomGateway.requestRematch(roomCode, uid)) {
@@ -225,12 +493,12 @@ class MainViewModel(
                         } else {
                             state.currentScreen
                         }
-                        state.copy(roomState = result.roomState, currentScreen = nextScreen, errorMessage = null)
+                        state.copy(roomState = result.roomState, currentScreen = nextScreen)
                     }
                 }
 
                 is RematchState.Rejected -> {
-                    _uiState.update { it.copy(errorMessage = result.reason) }
+                    postSnackbar(result.reason)
                 }
             }
         }
@@ -248,7 +516,7 @@ class MainViewModel(
         forfeitClaimInFlight = false
 
         viewModelScope.launch {
-            if (roomCode != null && uid != null) {
+            if (!snapshot.isSoloMode && roomCode != null && uid != null) {
                 runCatching {
                     appContainer.roomGateway.markPresence(roomCode, uid, connected = false)
                 }
@@ -260,44 +528,96 @@ class MainViewModel(
                     roomState = null,
                     currentScreen = AppScreen.HOME,
                     opponentGraceRemainingMs = null,
-                    infoMessage = null
+                    isProcessing = false,
+                    isSoloMode = false
                 )
             }
         }
     }
 
-    fun dismissMessage() {
-        _uiState.update { it.copy(errorMessage = null, infoMessage = null) }
+    fun onAppForegrounded() {
+        val state = _uiState.value
+        if (state.isSoloMode) return
+
+        val roomCode = state.currentRoomCode ?: return
+        val uid = state.identity?.uid ?: return
+
+        viewModelScope.launch {
+            runCatching {
+                appContainer.roomGateway.markPresence(roomCode, uid, connected = true)
+            }
+        }
     }
 
-    private suspend fun signIn() {
-        _uiState.update { it.copy(isInitializing = true, errorMessage = null) }
+    fun onAppBackgrounded() {
+        val state = _uiState.value
+        if (state.isSoloMode) return
+
+        val roomCode = state.currentRoomCode ?: return
+        val uid = state.identity?.uid ?: return
+
+        viewModelScope.launch {
+            runCatching {
+                appContainer.roomGateway.markPresence(roomCode, uid, connected = false)
+            }
+        }
+    }
+
+    fun clearSnackbar() {
+        _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    private suspend fun restoreIdentity() {
+        _uiState.update {
+            it.copy(
+                isInitializing = true,
+                authState = AuthUiState.AUTH_LOADING,
+                isAuthRequired = true
+            )
+        }
 
         val result = runCatching {
             appContainer.authGateway.signInOrFallback()
         }
 
         result.onSuccess { identity ->
-            _uiState.update { state ->
-                val nextNickname = state.nickname.ifBlank {
-                    identity.displayName.takeIf { identity.authProvider.name == "GOOGLE" }.orEmpty()
-                }
-                state.copy(
-                    identity = identity,
-                    nickname = nextNickname,
-                    isInitializing = false
-                )
-            }
-
-            if (_uiState.value.nickname.isNotBlank()) {
-                appContainer.preferencesStore.setNickname(_uiState.value.nickname)
-            }
-        }.onFailure { throwable ->
+            applyIdentity(identity)
+        }.onFailure {
             _uiState.update {
                 it.copy(
                     isInitializing = false,
-                    errorMessage = throwable.message ?: "Sign-in failed"
+                    isProcessing = false,
+                    identity = null,
+                    authState = AuthUiState.AUTH_ERROR,
+                    isAuthRequired = true
                 )
+            }
+        }
+    }
+
+    private fun applyIdentity(identity: PlayerIdentity) {
+        _uiState.update { state ->
+            val nextNickname = state.nickname.ifBlank {
+                identity.displayName.takeIf { identity.authProvider == AuthProvider.GOOGLE }
+                    .orEmpty()
+            }
+
+            state.copy(
+                identity = identity,
+                nickname = nextNickname,
+                isInitializing = false,
+                isProcessing = false,
+                authState = when (identity.authProvider) {
+                    AuthProvider.GOOGLE -> AuthUiState.AUTHENTICATED_GOOGLE
+                    AuthProvider.ANONYMOUS -> AuthUiState.AUTHENTICATED_GUEST
+                },
+                isAuthRequired = false
+            )
+        }
+
+        viewModelScope.launch {
+            if (_uiState.value.nickname.isNotBlank()) {
+                appContainer.preferencesStore.setNickname(_uiState.value.nickname)
             }
         }
     }
@@ -317,14 +637,11 @@ class MainViewModel(
                         state.copy(
                             roomState = room,
                             currentScreen = nextScreen,
-                            errorMessage = null,
                             currentRoomCode = room.code
                         )
                     }
                 }.onFailure { throwable ->
-                    _uiState.update {
-                        it.copy(errorMessage = throwable.message ?: "Lost room updates")
-                    }
+                    postSnackbar(throwable.message ?: "Lost room updates")
                 }
             }
         }
@@ -334,6 +651,8 @@ class MainViewModel(
             viewModelScope.launch {
                 runCatching {
                     appContainer.roomGateway.markPresence(code, uid, connected = true)
+                }.onFailure {
+                    postSnackbar(it.message ?: "Presence sync failed")
                 }
             }
         }
@@ -349,6 +668,11 @@ class MainViewModel(
                 delay(1_000)
 
                 val state = _uiState.value
+                if (state.isSoloMode) {
+                    _uiState.update { it.copy(opponentGraceRemainingMs = null) }
+                    continue
+                }
+
                 val room = state.roomState
                 val myUid = state.identity?.uid
 
@@ -379,9 +703,7 @@ class MainViewModel(
                     )
 
                     if (claim.isFailure) {
-                        _uiState.update {
-                            it.copy(errorMessage = claim.exceptionOrNull()?.message ?: "Failed to claim forfeit")
-                        }
+                        postSnackbar(claim.exceptionOrNull()?.message ?: "Failed to claim forfeit")
                     }
                     forfeitClaimInFlight = false
                 }
@@ -393,6 +715,17 @@ class MainViewModel(
         return _uiState.value.nickname.trim().ifBlank {
             identity.displayName.ifBlank { "Player" }
         }
+    }
+
+    private fun postSnackbar(message: String) {
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        roomObservationJob?.cancel()
+        forfeitMonitorJob?.cancel()
+        appContainer.authGateway.dispose()
     }
 
     companion object {
