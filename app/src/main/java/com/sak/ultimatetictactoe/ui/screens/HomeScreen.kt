@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,6 +36,8 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -45,6 +49,7 @@ import com.sak.ultimatetictactoe.ui.MainUiState
 import com.sak.ultimatetictactoe.ui.components.NeonPanel
 import com.sak.ultimatetictactoe.ui.theme.NeonBlue
 import com.sak.ultimatetictactoe.ui.theme.NeonPink
+import com.sak.ultimatetictactoe.ui.theme.PurpleAccent
 import com.sak.ultimatetictactoe.ui.theme.TextSecondary
 
 @Composable
@@ -61,15 +66,17 @@ fun HomeScreen(
     onContinueAsGuest: () -> Unit,
     onSignOut: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xFF030814),
-                        androidx.compose.ui.graphics.Color(0xFF0A1B32),
-                        androidx.compose.ui.graphics.Color(0xFF040A16)
+                        androidx.compose.ui.graphics.Color(0xFF000000),
+                        androidx.compose.ui.graphics.Color(0xFF120A20),
+                        androidx.compose.ui.graphics.Color(0xFF000000)
                     )
                 )
             )
@@ -81,28 +88,32 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = if (compactHeight) 14.dp else 18.dp),
+                .padding(horizontal = 18.dp, vertical = if (compactHeight) 12.dp else 16.dp),
             verticalArrangement = Arrangement.spacedBy(spacing)
         ) {
             Text(
-                text = "ULTIMATE TT-TOE",
+                text = "ULTIMATE TIC-TAC-TOE",
                 style = titleSize,
-                color = NeonBlue
+                color = PurpleAccent
             )
 
             Text(
-                text = "Quick room code multiplayer",
+                text = "Fast 1v1 room battles or local pass-and-play.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
+
+            ModeHero(state.selectedHomeMode)
 
             NeonPanel {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
-                            text = "Identity",
+                            text = "Player Setup",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
@@ -112,7 +123,10 @@ fun HomeScreen(
 
                     if (state.identity == null) {
                         Button(
-                            onClick = onContinueWithGoogle,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onContinueWithGoogle()
+                            },
                             enabled = !state.isProcessing,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -122,7 +136,10 @@ fun HomeScreen(
                         }
 
                         OutlinedButton(
-                            onClick = onContinueAsGuest,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onContinueAsGuest()
+                            },
                             enabled = !state.isProcessing,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -137,7 +154,13 @@ fun HomeScreen(
                             color = TextSecondary
                         )
 
-                        TextButton(onClick = onSignOut, enabled = !state.isProcessing) {
+                        TextButton(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSignOut()
+                            },
+                            enabled = !state.isProcessing
+                        ) {
                             Text("Switch account")
                         }
                     }
@@ -156,19 +179,28 @@ fun HomeScreen(
                         ModeButton(
                             label = "Create",
                             selected = state.selectedHomeMode == HomeMode.CREATE,
-                            onClick = { onHomeModeSelected(HomeMode.CREATE) },
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onHomeModeSelected(HomeMode.CREATE)
+                            },
                             modifier = Modifier.weight(1f)
                         )
                         ModeButton(
                             label = "Join",
                             selected = state.selectedHomeMode == HomeMode.JOIN,
-                            onClick = { onHomeModeSelected(HomeMode.JOIN) },
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onHomeModeSelected(HomeMode.JOIN)
+                            },
                             modifier = Modifier.weight(1f)
                         )
                         ModeButton(
                             label = "Solo",
                             selected = state.selectedHomeMode == HomeMode.SOLO,
-                            onClick = { onHomeModeSelected(HomeMode.SOLO) },
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onHomeModeSelected(HomeMode.SOLO)
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -191,8 +223,8 @@ fun HomeScreen(
                                 singleLine = true,
                                 shape = RoundedCornerShape(18.dp),
                                 colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = androidx.compose.ui.graphics.Color(0x241B8BFF),
-                                    unfocusedContainerColor = androidx.compose.ui.graphics.Color(0x160D192C)
+                                    focusedContainerColor = androidx.compose.ui.graphics.Color(0x2A8B5CF6),
+                                    unfocusedContainerColor = androidx.compose.ui.graphics.Color(0x160F0C17)
                                 )
                             )
 
@@ -209,25 +241,32 @@ fun HomeScreen(
                                     ),
                                     shape = RoundedCornerShape(18.dp),
                                     colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = androidx.compose.ui.graphics.Color(0x241B8BFF),
-                                        unfocusedContainerColor = androidx.compose.ui.graphics.Color(0x160D192C)
+                                        focusedContainerColor = androidx.compose.ui.graphics.Color(0x2A8B5CF6),
+                                        unfocusedContainerColor = androidx.compose.ui.graphics.Color(0x160F0C17)
                                     )
                                 )
                             }
 
-                            if (mode == HomeMode.SOLO) {
-                                Text(
-                                    text = "Pass-and-play on one phone. X and O alternate turns.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary
-                                )
+                            val helperText = when (mode) {
+                                HomeMode.CREATE -> "Create a live room and share the code."
+                                HomeMode.JOIN -> "Enter your friend's room code to jump in."
+                                HomeMode.SOLO -> "Pass-and-play: one device, both X and O turns."
                             }
 
+                            Text(
+                                text = helperText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary
+                            )
+
                             Button(
-                                onClick = when (mode) {
-                                    HomeMode.CREATE -> onCreateRoom
-                                    HomeMode.JOIN -> onJoinRoom
-                                    HomeMode.SOLO -> onStartSoloGame
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    when (mode) {
+                                        HomeMode.CREATE -> onCreateRoom()
+                                        HomeMode.JOIN -> onJoinRoom()
+                                        HomeMode.SOLO -> onStartSoloGame()
+                                    }
                                 },
                                 enabled = !state.isProcessing && (mode == HomeMode.SOLO || !state.isAuthRequired),
                                 modifier = Modifier
@@ -249,12 +288,15 @@ fun HomeScreen(
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(
-                    onClick = onOpenHowTo,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onOpenHowTo()
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .sizeIn(minHeight = 48.dp)
                 ) {
-                    Text("How To")
+                    Text("How To Play")
                 }
 
                 FilledTonalButton(
@@ -264,11 +306,38 @@ fun HomeScreen(
                         .weight(1f)
                         .sizeIn(minHeight = 48.dp)
                 ) {
-                    Text("Live + Solo")
+                    Text("Game Lobby")
                 }
             }
 
-            Spacer(modifier = Modifier.height(if (compactHeight) 8.dp else 14.dp))
+            Spacer(modifier = Modifier.height(if (compactHeight) 8.dp else 12.dp))
+        }
+    }
+}
+
+@Composable
+private fun ModeHero(mode: HomeMode) {
+    val (left, right, subtitle) = when (mode) {
+        HomeMode.CREATE -> Triple("X", "O", "Live duel mode")
+        HomeMode.JOIN -> Triple("O", "X", "Jump into a friend's room")
+        HomeMode.SOLO -> Triple("X", "O", "Pass-and-play on one device")
+    }
+
+    NeonPanel {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(left, style = MaterialTheme.typography.titleLarge, color = NeonBlue)
+                Text("VS", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+                Text(right, style = MaterialTheme.typography.titleLarge, color = NeonPink)
+            }
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
         }
     }
 }
@@ -302,8 +371,8 @@ private fun IdentityChip(state: MainUiState) {
     val (label, color) = when (state.authState) {
         AuthUiState.AUTHENTICATED_GOOGLE -> "Google" to NeonBlue
         AuthUiState.AUTHENTICATED_GUEST -> "Guest" to NeonPink
-        AuthUiState.AUTH_LOADING -> "Loading" to NeonBlue.copy(alpha = 0.8f)
-        AuthUiState.AUTH_ERROR -> "Sign In" to NeonPink.copy(alpha = 0.8f)
+        AuthUiState.AUTH_LOADING -> "Loading" to PurpleAccent
+        AuthUiState.AUTH_ERROR -> "Sign In" to PurpleAccent
     }
 
     Surface(

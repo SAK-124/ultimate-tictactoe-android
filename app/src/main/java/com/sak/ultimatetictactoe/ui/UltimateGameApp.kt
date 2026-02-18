@@ -1,6 +1,7 @@
 package com.sak.ultimatetictactoe.ui
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +42,15 @@ fun UltimateGameApp(
         viewModel.clearSnackbar()
     }
 
+    BackHandler(enabled = state.currentScreen != AppScreen.HOME) {
+        when (state.currentScreen) {
+            AppScreen.HOW_TO -> viewModel.closeHowTo()
+            AppScreen.GAME,
+            AppScreen.SUMMARY -> viewModel.leaveMatchToHome()
+            AppScreen.HOME -> Unit
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -64,8 +74,8 @@ fun UltimateGameApp(
                             .background(
                                 Brush.verticalGradient(
                                     listOf(
-                                        androidx.compose.ui.graphics.Color(0xFF040A15),
-                                        androidx.compose.ui.graphics.Color(0xFF0A1F3E)
+                                        androidx.compose.ui.graphics.Color(0xFF000000),
+                                        androidx.compose.ui.graphics.Color(0xFF170D2A)
                                     )
                                 )
                             ),

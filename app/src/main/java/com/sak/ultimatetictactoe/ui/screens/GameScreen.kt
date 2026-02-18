@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,7 @@ import com.sak.ultimatetictactoe.ui.components.NeonPanel
 import com.sak.ultimatetictactoe.ui.components.UltimateBoard
 import com.sak.ultimatetictactoe.ui.theme.NeonBlue
 import com.sak.ultimatetictactoe.ui.theme.NeonPink
+import com.sak.ultimatetictactoe.ui.theme.PurpleAccent
 import com.sak.ultimatetictactoe.ui.theme.TextSecondary
 
 @Composable
@@ -80,9 +83,9 @@ fun GameScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xFF040A15),
-                        androidx.compose.ui.graphics.Color(0xFF0A1A32),
-                        androidx.compose.ui.graphics.Color(0xFF030913)
+                        androidx.compose.ui.graphics.Color(0xFF000000),
+                        androidx.compose.ui.graphics.Color(0xFF150C27),
+                        androidx.compose.ui.graphics.Color(0xFF000000)
                     )
                 )
             )
@@ -93,6 +96,8 @@ fun GameScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 14.dp, vertical = if (compactHeight) 12.dp else 16.dp),
@@ -102,11 +107,23 @@ fun GameScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = onLeaveToHome, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
+                IconButton(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onLeaveToHome()
+                    },
+                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                ) {
                     Icon(Icons.Default.Home, contentDescription = "Home", tint = MaterialTheme.colorScheme.onSurface)
                 }
 
-                IconButton(onClick = onOpenHowTo, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
+                IconButton(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onOpenHowTo()
+                    },
+                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                ) {
                     Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "How to play", tint = NeonBlue)
                 }
             }
@@ -116,7 +133,7 @@ fun GameScreen(
                     Text(
                         text = if (isSoloMode) "Solo Mode" else "Room ${roomState.code}",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = PurpleAccent
                     )
                     Text(
                         text = turnLabel,

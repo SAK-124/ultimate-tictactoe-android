@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,6 +50,7 @@ import com.sak.ultimatetictactoe.ui.theme.GlowPink
 import com.sak.ultimatetictactoe.ui.theme.NeonBlue
 import com.sak.ultimatetictactoe.ui.theme.NeonPink
 import com.sak.ultimatetictactoe.ui.theme.NightCard
+import com.sak.ultimatetictactoe.ui.theme.WarningYellow
 
 @Composable
 fun UltimateBoard(
@@ -65,7 +67,7 @@ fun UltimateBoard(
             .clip(MaterialTheme.shapes.large)
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF050E1E), Color(0xFF091A33))
+                    colors = listOf(Color(0xFF06040B), Color(0xFF140D20))
                 )
             )
             .padding(10.dp),
@@ -114,57 +116,92 @@ private fun MiniGrid(
         label = "mini-pulse-alpha"
     )
 
+    val miniWinner = board.miniWinnerAt(miniGridIndex)
+    val miniResolved = miniWinner != BoardState.EMPTY
+    val winnerOverlayColor = when (miniWinner) {
+        'X' -> NeonBlue.copy(alpha = 0.2f)
+        'O' -> NeonPink.copy(alpha = 0.2f)
+        BoardState.TIE -> Color.White.copy(alpha = 0.08f)
+        else -> Color.Transparent
+    }
+
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = when {
-            board.miniWinnerAt(miniGridIndex) == 'X' -> NeonBlue
-            board.miniWinnerAt(miniGridIndex) == 'O' -> NeonPink
-            highlighted -> NeonBlue.copy(alpha = pulse)
-            else -> Color(0xFF223754)
+            miniWinner == 'X' -> NeonBlue
+            miniWinner == 'O' -> NeonPink
+            highlighted -> WarningYellow.copy(alpha = pulse)
+            else -> Color(0xFF463565)
         },
         animationSpec = tween(230),
         label = "mini-border"
     )
 
-    Column(
+    Box(
         modifier = modifier
             .aspectRatio(1f)
             .border(
                 BorderStroke(
-                    width = if (highlighted) 2.dp else 1.dp,
+                    width = if (highlighted && !miniResolved) 2.dp else 1.dp,
                     color = borderColor
                 ),
                 shape = MaterialTheme.shapes.medium
             )
             .background(NightCard.copy(alpha = 0.72f), MaterialTheme.shapes.medium)
-            .padding(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(4.dp)
     ) {
-        for (cellRow in 0 until 3) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                for (cellCol in 0 until 3) {
-                    val cellIndex = cellRow * 3 + cellCol
-                    val symbol = board.cellAt(miniGridIndex, cellIndex)
-                    val isPlayableCell = highlighted && symbol == BoardState.EMPTY && !board.isMiniResolved(miniGridIndex)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (cellRow in 0 until 3) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (cellCol in 0 until 3) {
+                        val cellIndex = cellRow * 3 + cellCol
+                        val symbol = board.cellAt(miniGridIndex, cellIndex)
+                        val isPlayableCell = highlighted && symbol == BoardState.EMPTY && !miniResolved
 
-                    BoardCell(
-                        symbol = symbol,
-                        enabled = isPlayableCell,
-                        interactive = interactive,
-                        onTap = {
-                            if (interactive) {
-                                if (isPlayableCell) {
-                                    onCellTapped(miniGridIndex, cellIndex)
-                                } else {
-                                    onInvalidTap?.invoke()
+                        BoardCell(
+                            symbol = symbol,
+                            enabled = isPlayableCell,
+                            interactive = interactive,
+                            onTap = {
+                                if (interactive) {
+                                    if (isPlayableCell) {
+                                        onCellTapped(miniGridIndex, cellIndex)
+                                    } else {
+                                        onInvalidTap?.invoke()
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
+            }
+        }
+
+        if (miniResolved) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(winnerOverlayColor)
+            )
+
+            when (miniWinner) {
+                'X' -> BoardSymbol(
+                    value = "✕",
+                    color = NeonBlue.copy(alpha = 0.65f),
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSizeSp = 34f
+                )
+
+                'O' -> BoardSymbol(
+                    value = "◉",
+                    color = NeonPink.copy(alpha = 0.65f),
+                    modifier = Modifier.align(Alignment.Center),
+                    fontSizeSp = 34f
+                )
             }
         }
     }
@@ -189,7 +226,7 @@ private fun BoardCell(
     val backgroundColor = when (symbol) {
         'X' -> GlowBlue
         'O' -> GlowPink
-        else -> if (enabled) Color(0xFF152740) else Color(0xFF101D31)
+        else -> if (enabled) Color(0xFF2A1B42) else Color(0xFF181124)
     }
 
     Box(
@@ -227,12 +264,22 @@ private fun BoardCell(
 
 @Composable
 private fun BoardSymbol(value: String, color: Color) {
+    BoardSymbol(value, color, Modifier, 19f)
+}
+
+@Composable
+private fun BoardSymbol(
+    value: String,
+    color: Color,
+    modifier: Modifier,
+    fontSizeSp: Float
+) {
     Text(
         text = value,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.ExtraBold,
         color = color,
-        fontSize = 19.sp,
-        modifier = Modifier.padding(top = 1.dp)
+        fontSize = fontSizeSp.sp,
+        modifier = modifier.padding(top = 1.dp)
     )
 }

@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -19,6 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sak.ultimatetictactoe.domain.RoomState
@@ -36,6 +40,7 @@ fun SummaryScreen(
     onRematch: () -> Unit,
     onNewGame: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     val winnerName = roomState.winnerUid?.let { roomState.players[it]?.nickname }
     val meWon = myUid != null && roomState.winnerUid == myUid
     val xWins = roomState.board.miniWinners.count { it == 'X' }
@@ -62,9 +67,9 @@ fun SummaryScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xFF030914),
-                        androidx.compose.ui.graphics.Color(0xFF0A1E3C),
-                        androidx.compose.ui.graphics.Color(0xFF071329)
+                        androidx.compose.ui.graphics.Color(0xFF000000),
+                        androidx.compose.ui.graphics.Color(0xFF140A22),
+                        androidx.compose.ui.graphics.Color(0xFF000000)
                     )
                 )
             )
@@ -74,6 +79,8 @@ fun SummaryScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = if (compactHeight) 14.dp else 20.dp),
@@ -130,7 +137,10 @@ fun SummaryScreen(
                     }
 
                     Button(
-                        onClick = onRematch,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onRematch()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .sizeIn(minHeight = 52.dp)
@@ -139,7 +149,10 @@ fun SummaryScreen(
                     }
 
                     OutlinedButton(
-                        onClick = onNewGame,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onNewGame()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .sizeIn(minHeight = 52.dp)

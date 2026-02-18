@@ -9,8 +9,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.sak.ultimatetictactoe.ui.theme.NeonBlue
+import com.sak.ultimatetictactoe.ui.theme.PurpleAccent
 
 @Composable
 fun NeonPanel(
@@ -24,15 +25,15 @@ fun NeonPanel(
             .border(
                 width = 1.dp,
                 brush = Brush.linearGradient(
-                    colors = listOf(NeonBlue.copy(alpha = 0.42f), NeonBlue.copy(alpha = 0.1f))
+                    colors = listOf(PurpleAccent.copy(alpha = 0.48f), PurpleAccent.copy(alpha = 0.12f))
                 ),
                 shape = androidx.compose.material3.MaterialTheme.shapes.large
             )
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xE60A1A2C),
-                        androidx.compose.ui.graphics.Color(0xCC071220)
+                        Color(0xE6120F1D),
+                        Color(0xCC08060F)
                     )
                 ),
                 shape = androidx.compose.material3.MaterialTheme.shapes.large

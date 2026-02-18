@@ -5,11 +5,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val NeonDarkScheme = darkColorScheme(
-    primary = NeonBlue,
+    primary = PurpleAccent,
     onPrimary = TextPrimary,
-    secondary = NeonPink,
+    secondary = PurpleAccentSoft,
     onSecondary = TextPrimary,
-    tertiary = NeonBlueSoft,
+    tertiary = NeonBlue,
     background = NightBase,
     onBackground = TextPrimary,
     surface = NightPanel,

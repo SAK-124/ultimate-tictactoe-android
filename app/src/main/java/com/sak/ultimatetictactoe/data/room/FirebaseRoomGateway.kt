@@ -7,6 +7,7 @@ import com.google.firebase.database.MutableData
 import com.google.firebase.database.ServerValue
 import com.google.firebase.database.Transaction
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.auth.FirebaseAuth
 import com.sak.ultimatetictactoe.BuildConfig
 import com.sak.ultimatetictactoe.domain.Move
 import com.sak.ultimatetictactoe.domain.MoveResult
@@ -39,10 +40,15 @@ class FirebaseRoomGateway(
     }
 
     private val roomsRef = database?.getReference("rooms")
+    private val firebaseAuth: FirebaseAuth? = if (firebaseReady) FirebaseAuth.getInstance() else null
 
     override suspend fun createRoom(identity: PlayerIdentity, nickname: String): Result<RoomSession> {
         if (!firebaseReady || roomsRef == null) {
             return Result.failure(RoomOperationException("Firebase is not configured for this build"))
+        }
+
+        ensureAuthorizedIdentity(identity.uid).onFailure {
+            return Result.failure(it)
         }
 
         val safeName = sanitizeNickname(nickname, identity.displayName)
@@ -96,6 +102,10 @@ class FirebaseRoomGateway(
     ): Result<RoomSession> {
         if (!firebaseReady || roomsRef == null) {
             return Result.failure(RoomOperationException("Firebase is not configured for this build"))
+        }
+
+        ensureAuthorizedIdentity(identity.uid).onFailure {
+            return Result.failure(it)
         }
 
         val normalizedCode = code.trim().uppercase()
@@ -174,6 +184,10 @@ class FirebaseRoomGateway(
     }
 
     override suspend fun submitMove(code: String, move: Move): MoveResult {
+        ensureAuthorizedIdentity(move.playerUid).onFailure {
+            return MoveResult.Rejected(it.message ?: "Auth session expired. Sign in again.")
+        }
+
         val normalizedCode = code.trim().uppercase()
         val result = mutateRoom(normalizedCode) { currentRoom ->
             if (currentRoom == null) {
@@ -194,6 +208,10 @@ class FirebaseRoomGateway(
     }
 
     override suspend fun requestRematch(code: String, playerUid: String): RematchState {
+        ensureAuthorizedIdentity(playerUid).onFailure {
+            return RematchState.Rejected(it.message ?: "Auth session expired. Sign in again.")
+        }
+
         val normalizedCode = code.trim().uppercase()
         val result = mutateRoom(normalizedCode) { currentRoom ->
             if (currentRoom == null) {
@@ -215,6 +233,7 @@ class FirebaseRoomGateway(
 
     override suspend fun markPresence(code: String, playerUid: String, connected: Boolean) {
         if (!firebaseReady || roomsRef == null) return
+        if (ensureAuthorizedIdentity(playerUid).isFailure) return
 
         val normalizedCode = code.trim().uppercase()
         val presenceRef = roomsRef.child(normalizedCode).child("presence").child(playerUid)
@@ -249,6 +268,10 @@ class FirebaseRoomGateway(
     }
 
     override suspend fun claimForfeit(code: String, claimantUid: String, graceMs: Long): Result<RoomState> {
+        ensureAuthorizedIdentity(claimantUid).onFailure {
+            return Result.failure(it)
+        }
+
         val normalizedCode = code.trim().uppercase()
         return mutateRoom(normalizedCode) { currentRoom ->
             if (currentRoom == null) {
@@ -338,6 +361,26 @@ class FirebaseRoomGateway(
 
     private fun sanitizeNickname(input: String, fallback: String): String {
         return input.trim().ifBlank { fallback.trim() }.ifBlank { "Player" }
+    }
+
+    private suspend fun ensureAuthorizedIdentity(expectedUid: String): Result<Unit> {
+        if (!firebaseReady) {
+            return Result.failure(RoomOperationException("Firebase is not configured for this build"))
+        }
+
+        val currentUser = firebaseAuth?.currentUser
+            ?: return Result.failure(RoomOperationException("Auth session expired. Sign in again."))
+
+        if (currentUser.uid != expectedUid) {
+            return Result.failure(RoomOperationException("Signed account changed. Sign in again."))
+        }
+
+        return runCatching {
+            currentUser.getIdToken(false).await()
+            Unit
+        }.recoverCatching {
+            throw RoomOperationException("Auth token invalid. Sign in again.")
+        }
     }
 
     private fun mapFirebaseMessage(message: String?, code: Int?): String {

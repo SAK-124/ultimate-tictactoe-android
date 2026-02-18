@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -17,11 +19,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sak.ultimatetictactoe.ui.components.NeonPanel
 import com.sak.ultimatetictactoe.ui.theme.NeonBlue
 import com.sak.ultimatetictactoe.ui.theme.NeonPink
+import com.sak.ultimatetictactoe.ui.theme.PurpleAccent
 import com.sak.ultimatetictactoe.ui.theme.TextSecondary
 import com.sak.ultimatetictactoe.ui.theme.WarningYellow
 
@@ -30,15 +35,16 @@ fun HowToScreen(
     firstRun: Boolean,
     onDone: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xFF030A16),
-                        androidx.compose.ui.graphics.Color(0xFF0A1A32),
-                        androidx.compose.ui.graphics.Color(0xFF061324)
+                        androidx.compose.ui.graphics.Color(0xFF000000),
+                        androidx.compose.ui.graphics.Color(0xFF140B24),
+                        androidx.compose.ui.graphics.Color(0xFF000000)
                     )
                 )
             )
@@ -48,6 +54,8 @@ fun HowToScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = if (compactHeight) 14.dp else 20.dp),
@@ -56,7 +64,7 @@ fun HowToScreen(
             Text(
                 text = "How to Play",
                 style = MaterialTheme.typography.headlineMedium,
-                color = NeonBlue
+                color = PurpleAccent
             )
 
             Text(
@@ -87,7 +95,10 @@ fun HowToScreen(
             )
 
             Button(
-                onClick = onDone,
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onDone()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .sizeIn(minHeight = 52.dp)
