@@ -30,6 +30,15 @@ Neon-themed, snappy Ultimate Tic-Tac-Toe built with Jetpack Compose and Firebase
    - Preferred: add `app/google-services.json`
    - Or use `local.properties` with keys from `local.properties.example`
 
+## Current Firebase Project (Already Provisioned)
+- Project ID: `uttt-android-260218-sak`
+- Realtime DB: `uttt-android-260218-sak-default-rtdb` (`us-central1`)
+
+## Auth Mode Note
+- The app tries Google sign-in first when `FIREBASE_WEB_CLIENT_ID` is configured.
+- If unavailable, it falls back to anonymous-style local identity for gameplay continuity.
+- To fully enable Firebase Authentication providers in this project, use the Firebase Console `Authentication` tab and complete `Get started` once.
+
 ## Build Debug APK
 ```bash
 ./gradlew assembleDebug
@@ -46,4 +55,3 @@ APK output:
 - Host taps **Create Room** and shares code.
 - Guest enters code and taps **Join Room**.
 - Each move directs opponent to a mini-grid matching the chosen cell position.
-

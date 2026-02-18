@@ -37,15 +37,7 @@ class FirebaseAuthGateway(
 
     override suspend fun signInOrFallback(): PlayerIdentity {
         if (!firebaseReady) {
-            localFallbackIdentity?.let { return it }
-            val localIdentity = PlayerIdentity(
-                uid = "local-${UUID.randomUUID()}",
-                displayName = "Offline Player",
-                authProvider = AuthProvider.ANONYMOUS
-            )
-            localFallbackIdentity = localIdentity
-            identityState.value = localIdentity
-            return localIdentity
+            return createOrGetLocalIdentity("Offline Player")
         }
 
         firebaseAuth.currentUser?.toPlayerIdentity()?.let {
@@ -58,11 +50,17 @@ class FirebaseAuthGateway(
             return it
         }
 
-        val anonymous = firebaseAuth.signInAnonymously().await().user?.toPlayerIdentity()
-            ?: throw IllegalStateException("Anonymous sign-in did not return a user")
+        val anonymous = runCatching { firebaseAuth.signInAnonymously().await().user?.toPlayerIdentity() }
+            .getOrNull()
 
-        identityState.value = anonymous
-        return anonymous
+        if (anonymous != null) {
+            identityState.value = anonymous
+            return anonymous
+        }
+
+        // Some Firebase projects are created without Auth config initialized.
+        // Fallback keeps local multiplayer usable until Auth is enabled.
+        return createOrGetLocalIdentity("Guest")
     }
 
     override fun observeIdentity(): Flow<PlayerIdentity?> = identityState.asStateFlow()
@@ -103,5 +101,17 @@ class FirebaseAuthGateway(
             displayName = display,
             authProvider = provider
         )
+    }
+
+    private fun createOrGetLocalIdentity(defaultName: String): PlayerIdentity {
+        localFallbackIdentity?.let { return it }
+        val localIdentity = PlayerIdentity(
+            uid = "local-${UUID.randomUUID()}",
+            displayName = defaultName,
+            authProvider = AuthProvider.ANONYMOUS
+        )
+        localFallbackIdentity = localIdentity
+        identityState.value = localIdentity
+        return localIdentity
     }
 }
