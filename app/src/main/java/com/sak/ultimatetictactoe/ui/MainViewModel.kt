@@ -111,7 +111,7 @@ class MainViewModel(
     }
 
     fun onRoomCodeChanged(value: String) {
-        val normalized = value.uppercase().filter { it.isLetterOrDigit() }.take(6)
+        val normalized = value.filter { it.isDigit() }.take(4)
         _uiState.update { it.copy(roomCodeInput = normalized) }
     }
 
@@ -356,8 +356,8 @@ class MainViewModel(
             return
         }
 
-        if (code.length < 4) {
-            postSnackbar("Enter a valid room code")
+        if (code.length != 4) {
+            postSnackbar("Enter a valid 4-digit room code")
             return
         }
 

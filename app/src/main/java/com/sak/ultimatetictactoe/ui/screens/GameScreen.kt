@@ -26,13 +26,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.sak.ultimatetictactoe.domain.BoardState
 import com.sak.ultimatetictactoe.domain.RoomState
 import com.sak.ultimatetictactoe.domain.RoomStatus
 import com.sak.ultimatetictactoe.domain.UltimateTicTacToeEngine
@@ -51,7 +57,10 @@ fun GameScreen(
     opponentGraceRemainingMs: Long?,
     onMove: (miniGridIndex: Int, cellIndex: Int) -> Unit,
     onOpenHowTo: () -> Unit,
-    onLeaveToHome: () -> Unit
+    onLeaveToHome: () -> Unit,
+    onPlaceSfx: () -> Unit = {},
+    onMiniGridWinSfx: () -> Unit = {},
+    onMatchWinSfx: () -> Unit = {}
 ) {
     val haptics = LocalHapticFeedback.current
     val myPlayer = roomState.players[myUid]
@@ -60,6 +69,40 @@ fun GameScreen(
 
     val allowedMiniGrids = remember(roomState.board) {
         UltimateTicTacToeEngine.availableMiniGrids(roomState.board)
+    }
+
+    var previousMoveCount by remember(roomState.code) { mutableIntStateOf(roomState.board.moveCount) }
+    var previousResolvedMiniCount by remember(roomState.code) {
+        mutableIntStateOf(countResolvedMiniGrids(roomState.board.miniWinners))
+    }
+    var previousStatus by remember(roomState.code) { mutableStateOf(roomState.status) }
+
+    LaunchedEffect(
+        roomState.board.moveCount,
+        roomState.board.miniWinners,
+        roomState.status,
+        roomState.winnerUid
+    ) {
+        val currentResolvedMiniCount = countResolvedMiniGrids(roomState.board.miniWinners)
+
+        if (roomState.board.moveCount > previousMoveCount) {
+            onPlaceSfx()
+        }
+
+        if (currentResolvedMiniCount > previousResolvedMiniCount) {
+            onMiniGridWinSfx()
+        }
+
+        if (previousStatus != RoomStatus.FINISHED &&
+            roomState.status == RoomStatus.FINISHED &&
+            roomState.winnerUid != null
+        ) {
+            onMatchWinSfx()
+        }
+
+        previousMoveCount = roomState.board.moveCount
+        previousResolvedMiniCount = currentResolvedMiniCount
+        previousStatus = roomState.status
     }
 
     val currentTurnPlayer = roomState.players[roomState.currentTurnUid]
@@ -192,4 +235,8 @@ fun GameScreen(
             }
         }
     }
+}
+
+private fun countResolvedMiniGrids(miniWinners: String): Int {
+    return miniWinners.count { it != BoardState.EMPTY }
 }

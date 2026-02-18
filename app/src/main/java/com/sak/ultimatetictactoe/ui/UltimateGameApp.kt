@@ -14,14 +14,20 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.sak.ultimatetictactoe.ui.audio.GameAudioEngine
 import com.sak.ultimatetictactoe.ui.screens.GameScreen
 import com.sak.ultimatetictactoe.ui.screens.HomeScreen
 import com.sak.ultimatetictactoe.ui.screens.HowToScreen
@@ -34,12 +40,35 @@ fun UltimateGameApp(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val audioEngine = remember { GameAudioEngine(context) }
 
     LaunchedEffect(state.snackbarMessage) {
         val message = state.snackbarMessage ?: return@LaunchedEffect
         snackbarHostState.currentSnackbarData?.dismiss()
         snackbarHostState.showSnackbar(message)
         viewModel.clearSnackbar()
+    }
+
+    LaunchedEffect(state.currentScreen) {
+        audioEngine.setBgmScreen(state.currentScreen)
+    }
+
+    DisposableEffect(lifecycleOwner, audioEngine) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> audioEngine.resume()
+                Lifecycle.Event.ON_STOP -> audioEngine.pause()
+                else -> Unit
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            audioEngine.release()
+        }
     }
 
     BackHandler(enabled = state.currentScreen != AppScreen.HOME) {
@@ -126,7 +155,10 @@ fun UltimateGameApp(
                                     opponentGraceRemainingMs = state.opponentGraceRemainingMs,
                                     onMove = viewModel::submitMove,
                                     onOpenHowTo = { viewModel.openHowTo(AppScreen.GAME) },
-                                    onLeaveToHome = viewModel::leaveMatchToHome
+                                    onLeaveToHome = viewModel::leaveMatchToHome,
+                                    onPlaceSfx = audioEngine::playPlace,
+                                    onMiniGridWinSfx = audioEngine::playMiniGridWin,
+                                    onMatchWinSfx = audioEngine::playMatchWin
                                 )
                             }
                         }

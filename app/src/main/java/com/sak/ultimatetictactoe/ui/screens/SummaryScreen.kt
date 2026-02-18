@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.sak.ultimatetictactoe.domain.RoomState
 import com.sak.ultimatetictactoe.domain.WinReason
 import com.sak.ultimatetictactoe.ui.components.NeonPanel
+import com.sak.ultimatetictactoe.ui.components.UltimateBoard
 import com.sak.ultimatetictactoe.ui.theme.NeonBlue
 import com.sak.ultimatetictactoe.ui.theme.NeonPink
 import com.sak.ultimatetictactoe.ui.theme.TextSecondary
@@ -110,6 +111,24 @@ fun SummaryScreen(
                     StatRow("X mini-grids", xWins.toString())
                     StatRow("O mini-grids", oWins.toString())
                     StatRow("Time", formatElapsed(roomState.startedAt, roomState.updatedAt))
+                }
+            }
+
+            NeonPanel {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Final Board Snapshot",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    UltimateBoard(
+                        board = roomState.board,
+                        allowedMiniGrids = emptySet(),
+                        interactive = false,
+                        onCellTapped = { _, _ -> },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 

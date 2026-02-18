@@ -236,8 +236,8 @@ fun HomeScreen(
                                     label = { Text("Room code") },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Ascii,
-                                        capitalization = KeyboardCapitalization.Characters
+                                        keyboardType = KeyboardType.NumberPassword,
+                                        capitalization = KeyboardCapitalization.None
                                     ),
                                     shape = RoundedCornerShape(18.dp),
                                     colors = TextFieldDefaults.colors(
@@ -249,7 +249,7 @@ fun HomeScreen(
 
                             val helperText = when (mode) {
                                 HomeMode.CREATE -> "Create a live room and share the code."
-                                HomeMode.JOIN -> "Enter your friend's room code to jump in."
+                                HomeMode.JOIN -> "Enter your friend's 4-digit room code."
                                 HomeMode.SOLO -> "Pass-and-play: one device, both X and O turns."
                             }
 

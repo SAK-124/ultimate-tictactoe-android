@@ -53,7 +53,7 @@ class FirebaseRoomGateway(
 
         val safeName = sanitizeNickname(nickname, identity.displayName)
 
-        repeat(12) {
+        repeat(64) {
             val code = generateRoomCode()
             val result = mutateRoom(code) { currentRoom ->
                 if (currentRoom != null) {
@@ -108,7 +108,7 @@ class FirebaseRoomGateway(
             return Result.failure(it)
         }
 
-        val normalizedCode = code.trim().uppercase()
+        val normalizedCode = normalizeRoomCode(code)
         val safeName = sanitizeNickname(nickname, identity.displayName)
 
         val joinResult = mutateRoom(normalizedCode) { currentRoom ->
@@ -148,7 +148,7 @@ class FirebaseRoomGateway(
             return flowOf(Result.failure(RoomOperationException("Firebase is not configured for this build")))
         }
 
-        val normalizedCode = code.trim().uppercase()
+        val normalizedCode = normalizeRoomCode(code)
         val roomRef = roomsRef.child(normalizedCode)
 
         return callbackFlow {
@@ -188,7 +188,7 @@ class FirebaseRoomGateway(
             return MoveResult.Rejected(it.message ?: "Auth session expired. Sign in again.")
         }
 
-        val normalizedCode = code.trim().uppercase()
+        val normalizedCode = normalizeRoomCode(code)
         val result = mutateRoom(normalizedCode) { currentRoom ->
             if (currentRoom == null) {
                 RoomTransactionEngine.Outcome.Failure("Room not found")
@@ -212,7 +212,7 @@ class FirebaseRoomGateway(
             return RematchState.Rejected(it.message ?: "Auth session expired. Sign in again.")
         }
 
-        val normalizedCode = code.trim().uppercase()
+        val normalizedCode = normalizeRoomCode(code)
         val result = mutateRoom(normalizedCode) { currentRoom ->
             if (currentRoom == null) {
                 RoomTransactionEngine.Outcome.Failure("Room not found")
@@ -235,7 +235,7 @@ class FirebaseRoomGateway(
         if (!firebaseReady || roomsRef == null) return
         if (ensureAuthorizedIdentity(playerUid).isFailure) return
 
-        val normalizedCode = code.trim().uppercase()
+        val normalizedCode = normalizeRoomCode(code)
         val presenceRef = roomsRef.child(normalizedCode).child("presence").child(playerUid)
 
         if (connected) {
@@ -272,7 +272,7 @@ class FirebaseRoomGateway(
             return Result.failure(it)
         }
 
-        val normalizedCode = code.trim().uppercase()
+        val normalizedCode = normalizeRoomCode(code)
         return mutateRoom(normalizedCode) { currentRoom ->
             if (currentRoom == null) {
                 RoomTransactionEngine.Outcome.Failure("Room not found")
@@ -350,13 +350,12 @@ class FirebaseRoomGateway(
         }
     }
 
-    private fun generateRoomCode(length: Int = 6): String {
-        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-        return buildString(length) {
-            repeat(length) {
-                append(alphabet[Random.nextInt(alphabet.length)])
-            }
-        }
+    private fun generateRoomCode(): String {
+        return Random.nextInt(0, 10_000).toString().padStart(4, '0')
+    }
+
+    private fun normalizeRoomCode(code: String): String {
+        return code.trim().filter(Char::isDigit).take(4)
     }
 
     private fun sanitizeNickname(input: String, fallback: String): String {
